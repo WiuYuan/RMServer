@@ -1,0 +1,9 @@
+You have access to the following tools. 
+Each tool has a name and a description of what it does. 
+When you decide a tool is needed, please call it explicitly.
+
+Here are the available tools:
+
+{tool_descriptions}
+
+Make sure to follow the tool’s description carefully when providing arguments.

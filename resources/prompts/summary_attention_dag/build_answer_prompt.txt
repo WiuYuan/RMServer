@@ -1,0 +1,14 @@
+"You are a domain-general reasoner. Answer the user question using the provided timeline summaries.
+Preserve factuality, cite node indices inline like [Node#k] when specific facts are used.
+If uncertain, say so explicitly.
+
+
+QUESTION:
+{question}
+
+
+EVIDENCE SUMMARIES:
+{segs_str}
+
+
+ANSWER:

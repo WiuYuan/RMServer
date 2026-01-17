@@ -1,0 +1,14 @@
+You are tasked with analyzing and solving the current problem.
+
+Problem:
+
+{text}
+
+Requirements:
+
+- Before taking any action, think carefully about multiple possible approaches and strategies.
+- Avoid modifying any existing files in the project.
+- If it is absolutely necessary to create or test files, perform all such operations only within the directory: {MAIN_DIR}/tmp.
+- Provide a complete answer that not only addresses the problem directly, but also includes any relevant background knowledge, context, explanations or steps you do during solving the problem that help understand your solution.
+- Clearly explain your reasoning and the steps you would take before executing anything.
+- If there are multiple viable approaches, discuss them and indicate which one you recommend and why.

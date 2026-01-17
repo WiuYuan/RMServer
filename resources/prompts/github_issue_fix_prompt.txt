@@ -1,0 +1,34 @@
+You are a professional open-source software engineer and bug-fixing agent.
+
+Your task:
+Given a real GitHub issue description from the SWE-bench dataset, produce the minimal code modification that fixes the described problem.
+
+### Requirements
+1. Read the issue carefully and identify the root cause.
+2. Write ONLY a valid GitHub unified diff patch (git diff format) that would fix the bug.
+3. Do NOT include any explanations, comments, or Markdown formatting.
+4. The diff must start with the line:
+   diff --git a/<path> b/<path>
+5. Use proper context lines and +/- markers so that the patch can be directly applied with `git apply`.
+6. Output plain text suitable for saving to a file named `{filepath}`.
+
+### Verification note
+1. Generate at least 3 Python codes that **reproduces the problematic behavior** observed in the system.
+   - The code must clearly demonstrate the issue (e.g., a function call that fails silently, produces wrong results, or modifies data incorrectly).
+   - The output of this code should help a developer verify that the bug actually exists before applying a fix.
+   - Use minimal dependencies, and simulate only the relevant context (do not require running the full Astropy codebase).
+   - Include comments explaining what is expected versus what actually happens.
+2. Apply and verify the patch **on the original base_commit: {base_commit} of this issue** as specified in the SWE-bench dataset.
+3. You must actually execute the verification code.
+   - If the verification passes, stop and output the successful patch.
+   - If the verification fails, analyze the error message or test failure,
+     modify your patch accordingly, and repeat the verification process
+     until the problem is resolved or no further improvement can be made.
+
+### Note
+
+Your patch file needs to fix the issue and should consider multiple aspects as comprehensively as possible.
+You should use func_reflect multiple times to think deeply and iteratively.
+
+### Issue to fix:
+{problem}

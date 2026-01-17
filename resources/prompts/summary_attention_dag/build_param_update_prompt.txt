@@ -1,0 +1,21 @@
+"You are updating a node-level summarization instruction to better serve a user query.
+MODE: {mode}
+USER QUERY (A):{question}
+CURRENT NODE ROLE:- Layer: {layer}, Index: {idx}
+- It receives up to 10 ordered summaries from previous layer.
+- It must output a merged summary that preserves order and supports the query.
+CURRENT INSTRUCTION (old):
+""{old_instr}""
+PARENT SUMMARIES (ordered):
+{parents_str}
+TASK:
+(1) Propose a minimally-edited NEW instruction that:
+   - Stays general enough for future updates.
+   - Adds query-specific focus (what to emphasize / filter).
+   - Keeps the ≤10,000 chars hard limit and chronology constraint.
+(2) Provide a brief rationale (2-3 bullets).
+FORMAT (JSON):
+{
+'  "NEW_INSTRUCTION": "...",'
+'  "RATIONALE": "- point1\- point2"'
+}

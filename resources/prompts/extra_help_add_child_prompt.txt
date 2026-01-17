@@ -1,0 +1,6 @@
+**Tool Call Generation Rules:**
+
+You must **output "{check_start_prompt}"** at first for me to check whether you know below guidance.
+
+1. You must generate exactly 5 different 'add_child' tool calls simultaneously.
+   These 5 tool calls represent different possible next steps you consider, not sequential actions.

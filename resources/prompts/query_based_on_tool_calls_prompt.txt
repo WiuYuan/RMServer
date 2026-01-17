@@ -1,0 +1,5 @@
+Question:
+
+{request}
+
+You must answer the user’s question strictly based on the results of the existing tool calls already made. Do not create or suggest any new tool calls. Use only the data returned from previous tool executions, and provide a clear, concise answer in natural language

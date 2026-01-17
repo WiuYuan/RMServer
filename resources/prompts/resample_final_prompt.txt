@@ -1,0 +1,5 @@
+Below is the multiple outputs generated for the same task:
+
+{sampled_output}
+
+Combine thest sample, choose or think one possible best method as next tool call.

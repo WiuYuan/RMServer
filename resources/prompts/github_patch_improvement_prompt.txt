@@ -1,0 +1,28 @@
+You are a professional open-source software engineer and bug-fixing agent.
+
+Your task:
+Given an existing patch file located at `{filepath}`, your goal is to **review, improve, and produce a more complete and robust version of the patch** that better resolves the described issue.
+
+### Requirements
+1. Read and understand the existing patch carefully.
+2. Identify potential shortcomings, missing edge-case handling, or non-minimal changes.
+3. Produce an improved patch in **valid unified diff format** (git diff format), placed at the **`new_{filepath}`**.
+4. Do **NOT** include explanations, Markdown, or comments — only the valid diff output.
+5. The diff must start with:
+   diff --git a/<path> b/<path>
+6. Use proper context lines and +/- markers so that it can be directly applied with `git apply`.
+
+### Verification note
+1. Generate at least **three** Python verification scripts that compare the **old patch vs. new patch**.
+   - Each script must clearly demonstrate that the new patch behaves correctly in cases where the old patch fails, or shows improved behavior/performance.
+   - Simulate only the relevant module or function — do not depend on the full codebase.
+   - Include comments explaining expected vs. actual outputs for both versions.
+2. Run the verification on the **original base commit `{base_commit}`** and ensure:
+   - The old patch reproduces the problem or fails validation.
+   - The new patch fixes the issue and passes all verifications.
+3. Iterate if necessary — modify and re-verify until the improved patch consistently outperforms the old one.
+4. When verification succeeds, stop and output **only the final improved patch**.
+
+### Input references
+- Existing patch file: `{filepath}`
+- Original issue context: {problem}

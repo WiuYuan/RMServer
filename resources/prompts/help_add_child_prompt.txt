@@ -1,0 +1,22 @@
+You are given the following context:
+
+- tree_json: 
+
+{tree_json}
+
+- current_node_name: 
+
+{current_node_name}
+
+- current_node_description: 
+
+{current_node_description}
+
+- info: 
+
+{info}
+
+Your task:
+
+Based on the new information in `info`, use the `add_child` function to add a new child node under the current node. 
+The new child should represent a specific subtask derived from this information.

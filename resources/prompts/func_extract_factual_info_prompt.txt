@@ -1,0 +1,16 @@
+Task Description:
+Please rewrite the following text into **pure factual information**. Remove all evaluative, judgmental, or conclusive statements, as well as any subjective or attitude-based expressions. Keep only objective facts, data, steps, and technical details. The output should be entirely descriptive and neutral, without words like "successfully", "reasonable", or "ready for deployment".
+
+[Text Begin]
+
+
+{text}
+
+
+[Text End]
+
+
+Output Requirements:
+- Retain all numbers, sample sizes, model names, and operational steps
+- Remove any judgmental or evaluative phrases
+- The output format can preserve the original structure or be organized into bullet points/tables

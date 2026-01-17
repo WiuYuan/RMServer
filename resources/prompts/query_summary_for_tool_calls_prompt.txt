@@ -1,0 +1,16 @@
+You are given two consecutive parts of a tool call log.
+Part One:
+
+{part1}
+
+Part Two:
+
+{part2}
+
+Each part contains structured information about how a tool was used.
+Your task is to focus ONLY on the first part of the tool call.
+1. Read and understand what the tool was doing in the first part — what function it was calling, what data or parameters it processed, and what purpose or computation it served.
+2. Write a concise summary of the first part.
+3. Do not describe or refer to the second part of the tool call.
+4. The summary must be in plain English, self-contained, and no longer than {max_char} characters.
+5. Be factual and avoid speculation beyond what is contained in the first part.

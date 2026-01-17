@@ -1,0 +1,23 @@
+You need to package {MAIN_DIR}/{package_name} into a single agent.
+1. All code and scripts you write from now on should be placed under {MAIN_DIR}/ or {MAIN_DATA_DIR}/, "
+any dataset should be placed under {MAIN_DATA_DIR}/.
+2. The entrypoint must be {MAIN_DIR}/agent/run.sh, which accepts:
+    bash {MAIN_DIR}/agent/run.sh --config /path/to/config.json
+3. Inside run.sh, call the packaged code in {MAIN_DIR}/{package_name} according to the parameters in config.json.
+4. Ensure input/output are handled only through paths defined in config.json.
+5. Copy all available datasets (both real and test) into {MAIN_DATA_DIR}/, preserving grouping.
+    For example, if there are N different datasets, seperate them into (ensure one sample folder only contain one dataset):
+        {MAIN_DATA_DIR}/sample1, {MAIN_DATA_DIR}/sample2, ..., {MAIN_DATA_DIR}/sampleN
+    Note: **Model files should not be placed as a dataset.**  
+6.	For each available dataset, generate a corresponding config.json inside its folder.
+   Example test_config.json in {MAIN_DATA_DIR}/sample1::
+   {{
+       "input": "{MAIN_DATA_DIR}/sample1/",
+       "input_format": "Description of input folder structure and file format",
+       "output": "{MAIN_DATA_DIR}/result1/",
+       "output_format": "Description of output folder structure and expected files",
+       "params": {{"any_other_parameters": "values"}}
+   }}
+7. After all processing is complete, you must verify that the agent can successfully run with the each test configuration:
+   bash {MAIN_DIR}/agent/run.sh --config {MAIN_DATA_DIR}/sample1/config.json
+   Note: you need run it for sample1, sample2, ..., sampleN

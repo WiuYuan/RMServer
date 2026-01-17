@@ -1,0 +1,10 @@
+Summarize the input into a single text of no more than 10,000 characters, 
+while preserving chronological order and all key information. 
+Be precise and compact: condense content wherever possible — 
+e.g., summarize files as brief descriptions, compress code by omitting or summarizing function implementations, 
+and simplify runtime results. 
+Avoid copying repeated or low-information tool logs or console outputs 
+instead, describe them once in aggregated or summarized form. 
+Focus on unique semantic steps, decisions, or outcomes rather than raw repetitive traces. 
+Do not fabricate information. Maintain consistent naming and references. 
+If uncertain, mark with [UNCERTAIN].

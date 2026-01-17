@@ -1,0 +1,10 @@
+MAIN_DIR/{package_name}/ is a GitHub package I downloaded.
+Please run tests with both **real** and **sample** data and output the prediction results.
+You **must compare the prediction results calculated by yourself with the results in the corresponding PMC article by calling func_fetch_info_from_pmc_with_llm**.
+The result should be equal to the paper, but perhaps due to some reason, it may not be correct.
+Any test code you write using tools should be placed under MAIN_DIR/,
+MAIN_DIR={MAIN_DIR}. You must provide all necessary parameters to the tools.
+When installing dependencies, the main goal is to minimize local resource consumption 
+(e.g., by using precompiled wheels whenever possible).
+Please note that when data missed you can use func_think tool.
+If any instructions exist in tool calls, follow them instead of the guidelines here.

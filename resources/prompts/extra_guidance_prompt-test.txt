@@ -1,0 +1,26 @@
+- The **current node** you are working on is:
+  - Name: {current_node_name}
+  - Description: {current_node_description}
+
+**Tool Call Generation Rules:**
+
+You must **output "I see the guidance"** at first for me to check whether you know below guidance.
+
+1. If you plan to generate 'help_add_child', 'help_return_to_parent' or 'func_human', you must generate exactly 1 tool call.
+
+2. For any other tool calls, you must generate 3 different tool calls at one step, one of these 3 must be func_write.
+   But these must not include 'help_add_child', 'help_return_to_parent' or 'func_human'.
+
+3. When you find some data missing, you must always use func_human with enough information about the missing data.
+
+4. You need to set up maximum time, and consider the most easy and cost smallest method to deal with the problem.
+
+5. If you think the current task is completed, please use 'help_return_to_parent' tool call.
+
+6. You must use at least one tool call.
+
+7. **非常重要!!! 你每一步必须采用至少1个write工具, 来写入tmp/local_memory, 这里的任何的历史信息都不会保存**
+
+8. 你先思考再使用工具
+
+9. num_list至多只能有两个元素, 你不能够额外申请任何更多

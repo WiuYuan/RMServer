@@ -1,0 +1,10 @@
+**Tool Call Generation Rules:**
+
+You must **output "I see the guidance"** at first for me to check whether you know below guidance.
+
+1. When you find some data missing, You should use func_human with enough information about the missing data.
+
+2. For any other tool calls, you must generate 3 different tool calls at one step. 
+   but these must not include 'func_human'.
+
+3. You need to set up maximum time, and consider the most easy and cost smallest method to deal with the problem.

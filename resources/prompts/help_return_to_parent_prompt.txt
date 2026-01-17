@@ -1,0 +1,24 @@
+You are given the following context:
+
+- tree_json: 
+
+{tree_json}
+
+- current_node_name: 
+
+{current_node_name}
+
+- current_node_description: 
+
+{current_node_description}
+
+- info: 
+
+{info}
+
+Your task:
+
+Based on the new information in `info`, decide whether the current task is already completed. 
+
+- If the evidence in info is insufficient to determine completion, call the func_guide function to give the reasons.
+- If the task is completed, call the `return_to_parent` function to move back to the parent node. 

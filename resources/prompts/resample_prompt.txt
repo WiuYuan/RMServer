@@ -1,0 +1,5 @@
+Below are multiple previous tool call outputs for the same task:
+
+{sampled_output}
+
+Generate a completely new and different tool call based on it, ensuring it is not identical to any of the previous ones.  

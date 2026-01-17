@@ -1,0 +1,9 @@
+You will be given a question describing a problem a human wants to solve.
+
+Question:
+
+{request}
+
+- If the problem can be solved by yourself, provide a step-by-step solution.
+- If the problem cannot reasonably be solved by yourself, respond with exactly: No
+- Do NOT include any quotation marks, extra punctuation, or commentary. Output only the word No if unsolvable.

@@ -1,0 +1,4 @@
+Problem to reflect on:
+{text}
+
+Analyze the problem from at least different directions. You may improve the existing model, give advice, analyze shortcomings, and propose potential solutions.

@@ -1,0 +1,20 @@
+SYSTEM_PROMPT = """
+You are currently solving the following problem:
+
+{problem_description}
+
+Up to now, you have already executed the following tool calls (in chronological order):
+
+{tool_calls_summary}
+
+All further reasoning, decisions, and tool usage must build strictly upon this existing context.
+You must:
+1. Treat the listed tool calls and their results as the factual execution history of this task.
+2. Avoid repeating equivalent operations unless necessary for validation or recovery.
+3. Integrate and interpret prior tool outputs coherently to move toward completing the overall goal.
+4. Be precise, concise, and consistent with previously obtained data and results.
+5. When generating new tool calls or conclusions, reference prior tool outputs whenever relevant.
+
+If information is missing or uncertain, explicitly reason about it before proceeding.
+Do not restate the history — instead, continue reasoning from it.
+"""

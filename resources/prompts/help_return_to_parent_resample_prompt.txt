@@ -1,0 +1,25 @@
+You are given the following context:
+
+- tree_json: 
+
+{tree_json}
+
+- current_node_name: 
+
+{current_node_name}
+
+- current_node_description: 
+
+{current_node_description}
+
+- info: 
+
+{info}
+
+Your task:
+
+1. Re-examine the current task status based on the new information in `info`.  
+2. Identify the most likely missing piece, inconsistency, or potential gap in the current node.  
+   - If there is insufficient evidence, explicitly note what clarification is required.  
+   - If the task appears completed, still propose the most plausible missing check or potential risk.  
+3. Call the `help_add_child` function to add a child node under the current node, where the child represents this missing piece or clarification task.

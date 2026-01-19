@@ -10,7 +10,7 @@ from src.services.external_client import ExternalClient
 from fastapi.responses import StreamingResponse
 from src.services.agents import Tool_Calls, stop_if_no_tool_calls
 import traceback
-from functools import partial
+from functools import partial, update_wrapper
 from src.services.custom_tools import custom_tools
 import threading, time
 from dataclasses import dataclass
@@ -19,6 +19,7 @@ from pydantic import TypeAdapter
 import shutil, json, re
 from bs4 import BeautifulSoup
 import trafilatura
+from src.services.session_history import history_manager
 
 # === 基础配置 ===
 SECRET_FILE = "/home/ubuntu/.env_secret"
@@ -94,6 +95,9 @@ def clean_html_for_injection(raw_html: str) -> str:
     return text or ""
 
 # === 数据模型 ===
+class TaskGetTerminalStatusReq(BaseModel):
+    task_id: str
+    
 class ArticleExtractImagesReq(BaseModel):
     article_id: str
 
@@ -332,11 +336,93 @@ async def handle_llm_simple_query(data: LLMRequestData):
                 c = item.get("data", {}).get("content", "")
                 if c: yield c
     return StreamingResponse(event_generator(), media_type="text/plain; charset=utf-8")
+
+async def handle_task_get_terminal_status(data: TaskGetTerminalStatusReq):
+    """
+    Query all terminal snapshots for a specific task.
+    This is used by the frontend for polling updates.
+    """
+    active_sessions = history_manager.list_task_sessions(data.task_id)
+    sessions_data = {}
+    
+    for sid in active_sessions:
+        # Get the real-time screen snapshot for each session
+        status = history_manager.get_session_status(data.task_id, sid)
+        sessions_data[sid] = {
+            "session_id": sid,
+            "snapshot": status
+        }
+        
+    pending_cmd = history_manager.get_pending_command(data.task_id)
+    
+    return {
+        "ok": True, 
+        "task_id": data.task_id,
+        "sessions": sessions_data,
+        "pending": pending_cmd
+    }
     
 async def handle_llm_query(data: LLMRequestData):
     data.task_id = data.task_id or "1"
     ctrl = ensure_task(data.task_id)
     ctrl.stop.clear()
+    
+    def terminal_create_new() -> str:
+        """
+        Create a new random terminal session. 
+        Returns the generated session_id and initial screen snapshot.
+        """
+        return history_manager.create_random_session(task_id=data.task_id)
+
+    def terminal_send_command(session_id: str, command: str) -> str:
+        """
+        Send a raw command string (e.g., 'ls -la\r') to a specific terminal session.
+
+        ⚠️ IMPORTANT:
+        This interface operates as a low-level Physical Terminal Simulation (PTY). 
+        It strictly mimics human keyboard interaction. To execute a command, 
+        you MUST include a carriage return '\r' at the end of the string. 
+        Without it, the characters will only be typed into the input buffer 
+        without being triggered for execution.
+
+        Returns:
+            dict: A snapshot of the screen immediately following the input.
+        """
+        return history_manager.send_to_session(
+            task_id=data.task_id, 
+            session_id=session_id, 
+            data=command
+        )
+
+    def terminal_get_status(session_id: str) -> str:
+        """
+        Get the current screen content of a session without sending any commands.
+        """
+        return history_manager.get_session_status(
+            task_id=data.task_id, 
+            session_id=session_id
+        )
+
+    def terminal_terminate_session(session_id: str) -> str:
+        """
+        Terminate and destroy a terminal session to release system resources.
+        """
+        return history_manager.close_terminal(
+            task_id=data.task_id, 
+            session_id=session_id
+        )
+        
+    def terminal_stage_command(session_id: str, command: str, reason: str) -> str:
+        """
+        If a command is potentially dangerous (e.g., rm, pip install, editing config), 
+        use this tool to stage it for human review instead of executing it directly.
+        """
+        return history_manager.stage_unsafe_command(
+            task_id=data.task_id, 
+            session_id=session_id, 
+            command=command, 
+            reason=reason
+        )
     
     task_dir=f"{DATA_DIR}/tasks/{data.task_id}"
     tc = Tool_Calls(LOG_DIR=task_dir, MAX_CHAR=800000, mode="Summary")
@@ -345,18 +431,61 @@ async def handle_llm_query(data: LLMRequestData):
     tools = []
     ct = custom_tools()
     if data.enable_fc:
-        tools.extend([ct.web_fetch, ct.search])
+        tools.extend([
+            # ct.web_fetch, 
+            # ct.search,
+            terminal_create_new, 
+            terminal_send_command, 
+            # terminal_get_status, 
+            terminal_terminate_session,
+            terminal_stage_command,
+        ])
+    
+    def system_prompt() -> str:
+        # 实时拉取当前任务下的所有会话
+        active_sessions = history_manager.list_task_sessions(data.task_id)
         
-    system_prompt = "1. Answer in the same language.\n2. Use $$ for math.\n3. Pinyin -> Chinese.\n"
-    if data.system_prompt_mode == "concise":
-        system_prompt += "4. Be concise.\n"
+        terminal_context_block = "\n=== ACTIVE TERMINAL SESSIONS ===\n"
+        if not active_sessions:
+            terminal_context_block += "No active terminal sessions in this task.\n"
+        else:
+            for sid in active_sessions:
+                # 获取该会话最新的实时状态（屏幕回显）
+                status = history_manager.get_session_status(data.task_id, sid)
+                terminal_context_block += f"--- Session ID: {sid} ---\n{status}\n"
+        terminal_context_block += "================================\n"
+        
+        # 基础规则
+        base_rules = [
+            "1. Answer in the same language.",
+            "2. Use $$ for math (e.g. $$x^2$$).",
+            "3. Pinyin -> Chinese.",
+        ]
+        if data.system_prompt_mode == "concise":
+            base_rules.append("4. Be concise.")
+            
+        # 获取挂起状态并注入 System Prompt
+        pending = history_manager.get_pending_command(data.task_id)
+        pending_context = ""
+        if pending:
+            pending_context = (
+                f"\n[!!! PENDING APPROVAL !!!]\n"
+                f"There is a command waiting for user execution:\n"
+                f"Session: {pending['session_id']}\n"
+                f"Command: {pending['command']}\n"
+                f"Reason: {pending['reason']}\n"
+                f"The user is reviewing this. DO NOT suggest new destructive commands until this is processed.\n"
+            )
+            
+        return "\n".join(base_rules) + "\n" + terminal_context_block + "\n" + pending_context
 
     try:
         llm = LLM(api_key=data.api_key, llm_url=data.llm_url, model_name=data.model_name, format="openai", ec=ec)
         loop = asyncio.get_running_loop()
         fn = partial(
             llm.query_with_tools,
-            prompt=system_prompt + "\n" + data.question,
+            system_prompt=system_prompt,
+            prompt=data.question,
             max_steps=100,
             tc=tc,
             tools=tools,
@@ -405,7 +534,48 @@ async def gateway_endpoint(req: ActionRequest):
             return await handle_task_select_article(TypeAdapter(TaskSelectArticleReq).validate_python(req.data))
         if req.action == "article_extract_images":
             return await handle_article_extract_images(TypeAdapter(ArticleExtractImagesReq).validate_python(req.data))
+        
+        if req.action == "task_get_terminal_status":
+            return await handle_task_get_terminal_status(
+                TypeAdapter(TaskGetTerminalStatusReq).validate_python(req.data)
+            )
+        if req.action == "task_execute_pending":
+            task_id = req.data.get("task_id")
+            pending = history_manager.pop_pending_command(task_id)
+            if not pending:
+                return {"ok": False, "msg": "No pending command."}
             
+            # 真正执行
+            result = history_manager.send_to_session(
+                task_id=task_id,
+                session_id=pending["session_id"],
+                data=pending["command"] + "\r"
+            )
+            
+            # 在 tc (任务历史) 中记录这一手动操作，保持 LLM 知情
+            task_dir = f"{DATA_DIR}/tasks/{task_id}"
+            tc = Tool_Calls(LOG_DIR=task_dir, MAX_CHAR=800000, mode="Summary")
+            tc.extend([{
+                "role": "assistant",
+                "content": f"【User Manual Action】User approved and executed: {pending['command']}\nResult:\n{result}"
+            }])
+            
+            return {"ok": True, "result": result}
+
+        # 清除/拒绝挂起的命令
+        if req.action == "task_discard_pending":
+            task_id = req.data.get("task_id")
+            pending = history_manager.pop_pending_command(task_id)
+            
+            # 告知 LLM 用户拒绝了
+            task_dir = f"{DATA_DIR}/tasks/{task_id}"
+            tc = Tool_Calls(LOG_DIR=task_dir, MAX_CHAR=800000, mode="Summary")
+            tc.extend([{
+                "role": "assistant",
+                "content": f"【User Manual Action】User REJECTED the pending command: {pending['command']}."
+            }])
+            return {"ok": True}
+        
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

@@ -139,7 +139,8 @@ class LLM:
 
     def query_with_tools(
         self,
-        prompt: Union[str, Callable[[], str]],
+        system_prompt: Union[str, Callable[[], str]],
+        prompt: str,
         max_steps: int,
         tc: Tool_Calls,
         extra_guide_tool_call: List[Dict[str, Any]] = [],
@@ -155,21 +156,24 @@ class LLM:
         #     print(prompt() if callable(prompt) else prompt)
         func_dict = {func.__name__: func for func in tools}
         messages = [
-            {"role": "user", "content": prompt() if callable(prompt) else prompt}
+            {"role": "user", "content": prompt}
+        ]
+        system_messages = [
+            {"role": "system", "content": system_prompt() if callable(system_prompt) else system_prompt}
         ]
         tc.extend(messages)
         all_texts = []
         for step in range(max_steps):
             # resample = False
             print(f"\n=== Prompt step {step+1} ===\n")
-            if callable(prompt):
-                messages[0]["content"] = prompt()
+            if callable(system_prompt):
+                system_messages[0]["content"] = system_prompt()
                 # if verbose:
                 #     print(prompt())
             text = ""
             if check_start_prompt is None:
                 text, tool_calls, should_stop = self.query_messages_with_tools(
-                    tc.get_value() + extra_guide_tool_call,
+                    system_messages + tc.get_value() + extra_guide_tool_call,
                     tools=tools,
                     tool_runner=tool_runner,
                     verbose=verbose,
@@ -177,7 +181,7 @@ class LLM:
             else:
                 while not text.startswith(check_start_prompt):
                     text, tool_calls, should_stop = self.query_messages_with_tools(
-                        tc.get_value() + extra_guide_tool_call,
+                        system_messages + tc.get_value() + extra_guide_tool_call,
                         tools=tools,
                         tool_runner=tool_runner,
                         verbose=verbose,
@@ -214,14 +218,14 @@ class LLM:
                 if func_name in func_dict:
                     if isinstance(args, str):
                         args = json.loads(args)
-                    # if verbose:
-                    #     formatted_args = self._format_arguments_for_display(
-                    #         func_name, args
-                    #     )
-                    #     formatted_args = formatted_args.replace("\n", "\n    ")
-                    #     print(
-                    #         f"\nCalling function '{func_name}' with arguments:\n{formatted_args}"
-                    #     )
+                    if verbose:
+                        formatted_args = self._format_arguments_for_display(
+                            func_name, args
+                        )
+                        formatted_args = formatted_args.replace("\n", "\n    ")
+                        print(
+                            f"\nCalling function '{func_name}' with arguments:\n{formatted_args}"
+                        )
                         # self.ec.send_message(
                         #         {
                         #             "type": "llm_info",
@@ -523,7 +527,7 @@ class LLM:
                                     },
                                 }
                             )
-                        # print(token.replace("\n", "\n    "), end="", flush=True)
+                        print(token.replace("\n", "\n    "), end="", flush=True)
 
         # Optionally remove <think> blocks
         if self.remove_think_enabled:
@@ -577,7 +581,7 @@ class LLM:
         #             },
         #         }
         #     )
-        # print("")
+        print("")
 
         return text_accumulate, tool_calls, False
 

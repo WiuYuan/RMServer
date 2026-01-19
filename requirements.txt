@@ -1,0 +1,29 @@
+# Web 框架与服务器
+fastapi
+uvicorn
+pydantic
+pydantic-settings
+python-multipart
+
+# 网页解析与抓取
+beautifulsoup4
+trafilatura
+lxml
+lxml_html_clean
+requests
+urllib3
+youtube-transcript-api
+
+# 大模型与数据处理
+tiktoken
+networkx
+matplotlib
+tqdm
+
+# 异步与通信
+websockets
+aiohttp
+
+# 实用工具
+python-dotenv
+pyte

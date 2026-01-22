@@ -1,6 +1,7 @@
 import uvicorn
 from fastapi import FastAPI, HTTPException, Header, Depends 
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from src.services.llm import LLM 
 import os
@@ -20,6 +21,24 @@ import shutil, json, re
 from bs4 import BeautifulSoup
 import trafilatura
 from src.services.session_history import history_manager
+import hashlib
+from src.utils.article_blog_generator import (
+    generate_blog_from_article_tree,
+    BlogGenConfig,
+)
+from src.services.blog_job_queue import BLOG_JOB_QUEUE
+import base64
+from io import BytesIO
+from PIL import Image
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(threadName)s] %(levelname)s: %(message)s"
+)
+
+logger = logging.getLogger(__name__)
+
 
 # === 基础配置 ===
 SECRET_FILE = "/home/ubuntu/.env_secret"
@@ -132,6 +151,15 @@ class ActionRequest(BaseModel):
 
 class StopData(BaseModel):
     task_id: str
+    
+class ArticleGenerateBlogReq(BaseModel):
+    task_id: str
+    article_id: str
+    model_name: str
+    api_key: str
+    llm_url: Optional[str] = None
+    style: Optional[Literal["math", "normal", "rigorous"]] = "math"
+
 
 # === 核心辅助函数 ===
 
@@ -142,10 +170,92 @@ def load_raw_html(abs_path: str) -> Tuple[str, str]:
         html = f.read()
     return title, html
 
+def clean_html_for_view(raw_html: str, title: Optional[str] = None) -> str:
+    """
+    返回：可直接 iframe 展示的「阅读级 HTML」
+    """
+
+    # 1. 用 trafilatura 抽正文（返回的是 HTML 片段）
+    extracted = trafilatura.extract(
+        raw_html,
+        include_tables=True,
+        include_comments=False,
+        output_format="html"
+    )
+
+    if not extracted:
+        extracted = "<p>(No readable content)</p>"
+
+    # 2. 用 BeautifulSoup 再清一遍
+    soup = BeautifulSoup(extracted, "lxml")
+
+    # 移除潜在危险 / 无用标签（保险）
+    for tag in soup.find_all(["script", "style", "noscript", "iframe"]):
+        tag.decompose()
+
+    body_html = soup.prettify()
+    title_html = f"<h1 class='article-title'>{title}</h1>" if title else ""
+
+    # 3. 包一层你可控的 HTML + CSS
+    return f"""
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+<style>
+/* ===== Reading Style ===== */
+body {{
+  margin: 0;
+  padding: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+               Helvetica, Arial, sans-serif;
+  line-height: 1.65;
+  background: #ffffff;
+  color: #111;
+}}
+
+.article {{
+  max-width: 900px;
+  margin: 0 auto;
+}}
+
+h1, h2, h3 {{
+  line-height: 1.3;
+}}
+
+img {{
+  max-width: 100%;
+  height: auto;
+}}
+
+table {{
+  border-collapse: collapse;
+  width: 100%;
+}}
+
+th, td {{
+  border: 1px solid #ccc;
+  padding: 6px 8px;
+}}
+</style>
+</head>
+
+<body>
+<div class="article">
+{title_html}
+{body_html}
+</div>
+</body>
+</html>
+"""
+
+
 async def handle_article_get_html(data: ArticleGetHtmlReq):
     abs_path = resolve_article_abs_path(data.article_id)
     title, html = load_raw_html(abs_path)
-    return {"ok": True, "article_id": data.article_id, "title": title, "clean_html": html}
+    return {"ok": True, "article_id": data.article_id, "title": title, "clean_html": clean_html_for_view(html, title)}
     # ↑字段名你前端叫 clean_html，这里为了不改前端，继续用 clean_html 装“原始 html”
 
 async def inject_article_to_task(task_id: str, article_id: str, title: str, content: str):
@@ -159,7 +269,7 @@ async def inject_article_to_task(task_id: str, article_id: str, title: str, cont
         {
             "role": "assistant", # 使用 assistant 角色模拟
             "content": (
-                f"【System Context Injection】\n"
+                f"[System Context Injection]\n"
                 f"User has selected an external article.\n"
                 f"Title: {title}\n"
                 f"Filename: {article_id}\n\n"
@@ -191,51 +301,197 @@ def list_files_in_dir(root: str):
             })
     return out
 
+def _parse_px(v: str | None) -> int | None:
+    """
+    把 '300', '300px', '30%' 等解析成像素（百分比直接忽略）
+    """
+    if not v:
+        return None
+    v = v.strip().lower()
+    if v.endswith("px"):
+        v = v[:-2]
+    if v.isdigit():
+        return int(v)
+    return None
+
+
+def _get_img_size(img):
+    """
+    尝试从 img 的属性或 style 中解析尺寸
+    """
+    # 1️⃣ HTML 属性
+    w = _parse_px(img.get("width"))
+    h = _parse_px(img.get("height"))
+
+    # 2️⃣ style="width:xxx;height:xxx"
+    if (w is None or h is None) and img.get("style"):
+        style = img["style"]
+        mw = re.search(r"width\s*:\s*(\d+)px", style)
+        mh = re.search(r"height\s*:\s*(\d+)px", style)
+        if w is None and mw:
+            w = int(mw.group(1))
+        if h is None and mh:
+            h = int(mh.group(1))
+
+    return w, h
+
+def _get_size_from_data_uri(data_uri: str) -> tuple[int | None, int | None]:
+    """
+    从 data:image/...;base64,... 解码真实图片尺寸
+    """
+    try:
+        if not data_uri.startswith("data:image"):
+            return None, None
+
+        # data:image/webp;base64,AAAA...
+        header, b64 = data_uri.split(",", 1)
+        raw = base64.b64decode(b64)
+
+        with Image.open(BytesIO(raw)) as im:
+            return im.width, im.height
+    except Exception:
+        return None, None
+    
+def _build_css_var_map(raw_html: str) -> dict[str, str]:
+    """
+    扫描整个 HTML 源码（包含 <style> 内联 CSS），提取：
+    --sf-img-16: url(data:image/xxx;base64,....)
+    返回 dict: {"--sf-img-16": "data:image/webp;base64,....", ...}
+    """
+    var_map: dict[str, str] = {}
+
+    # 兼容 url("data:...") / url('data:...') / url(data:...)
+    # 兼容有空格/换行/!important
+    pattern = re.compile(
+        r"(?P<name>--sf-img-[A-Za-z0-9_-]+)\s*:\s*url\(\s*"
+        r"(?P<quote>['\"]?)"
+        r"(?P<data>data:image[^'\"\)]+)"
+        r"(?P=quote)\s*\)",
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    for m in pattern.finditer(raw_html):
+        name = m.group("name")
+        data = m.group("data").strip()
+        # 有些 SingleFile 会把 data uriing 很长，中间夹换行；DOTALL 已覆盖，但这里再去掉空白更稳
+        data = re.sub(r"\s+", "", data)
+        var_map[name] = data
+
+    return var_map
+
+def _extract_real_image_data(img, css_var_map: dict[str, str]) -> str | None:
+    """
+    从 img 本体提取真正 data:image...；支持：
+    1) src=data:image...(非svg)
+    2) style 里 background-image:url(data:...)
+    3) style 里 background-image:var(--sf-img-XX) -> 用 css_var_map 解析
+    """
+    # 1) src 直接是 data:image（过滤掉占位 svg）
+    src = (img.get("src") or "").strip()
+    if src.startswith("data:image") and not src.startswith("data:image/svg+xml"):
+        return src
+
+    style = img.get("style") or ""
+
+    # 2) inline style 里有 url(data:...)
+    m = re.search(r"background-image\s*:\s*url\(\s*(['\"]?)(data:image[^'\"\)]+)\1\s*\)",
+                  style, flags=re.IGNORECASE | re.DOTALL)
+    if m:
+        data = re.sub(r"\s+", "", m.group(2).strip())
+        return data
+
+    # 3) inline style 里是 var(--sf-img-XX)
+    m = re.search(r"background-image\s*:\s*var\(\s*(--sf-img-[A-Za-z0-9_-]+)\s*\)",
+                  style, flags=re.IGNORECASE)
+    if m:
+        name = m.group(1)
+        data = css_var_map.get(name)
+        if data:
+            return data
+
+    return None
+
+
 # === 业务 Handlers ===
 async def handle_article_extract_images(data: ArticleExtractImagesReq):
     abs_path = resolve_article_abs_path(data.article_id)
-    
+
     with open(abs_path, "r", encoding="utf-8", errors="ignore") as f:
-        soup = BeautifulSoup(f, "lxml")
+        raw_html = f.read()
+
+    # ✅ 从“完整 HTML 源码”建立 CSS 变量映射（SingleFile 的图一般在这里）
+    css_var_map = _build_css_var_map(raw_html)
+    # print("css vars sample:", list(css_var_map.items())[:1])
+
+    soup = BeautifulSoup(raw_html, "lxml")
 
     images_data = []
-    # 查找所有 img 标签，BeautifulSoup 会按 DOM 顺序返回
-    img_tags = soup.find_all("img")
-    
+    seen_src_hashes = set()
     count = 1
-    for img in img_tags:
-        src = img.get("src", "")
-        if src.startswith("data:image"):
-            # 检查格式是否为 jpg 或 webp
-            # 格式示例: data:image/jpeg;base64,/9j/4AAQ...
-            header_part = src.split(",")[0]
-            
-            ext = None
-            if "image/jpeg" in header_part or "image/jpg" in header_part:
-                ext = "jpg"
-            elif "image/webp" in header_part:
-                ext = "webp"
-            
-            if ext:
-                # 获取 alt 属性作为描述，如果没有则生成默认标题
-                alt_text = img.get("alt", "").strip()
-                caption = alt_text if alt_text else f"Figure {count}"
-                
-                images_data.append({
-                    "index": count,
-                    "filename": f"figure_{count}.{ext}",
-                    "caption": caption,
-                    "mime_type": "image/jpeg" if ext == "jpg" else "image/webp",
-                    "base64_content": src # 包含完整的 data:image... 前缀，前端可直接展示
-                })
-                count += 1
 
-    return {
-        "ok": True,
-        "article_id": data.article_id,
-        "total": len(images_data),
-        "images": images_data
-    }
+    MIN_WIDTH = 100
+    MIN_HEIGHT = 100
+    MIN_TOTAL = 500
+
+    for img in soup.find_all("img"):
+        real_src = _extract_real_image_data(img, css_var_map)
+        if not real_src:
+            continue
+
+        clean_src = real_src.strip()
+
+        # 去重
+        src_hash = hashlib.md5(clean_src.encode()).hexdigest()
+        if src_hash in seen_src_hashes:
+            continue
+
+        # 尺寸
+        w, h = _get_size_from_data_uri(clean_src)
+        
+        # print("IMG", count, "size=", w, h, "src=", clean_src[:40])
+
+        # ✅ 2. 如果解码失败，再 fallback 到 HTML 属性
+        if w is None or h is None:
+            w2, h2 = _get_img_size(img)
+            w = w if w is not None else w2
+            h = h if h is not None else h2
+
+        # ✅ 3. 只有在“明确知道尺寸”时才过滤
+        if w is not None and h is not None:
+            if w < MIN_WIDTH or h < MIN_HEIGHT or w + h < MIN_TOTAL:
+                continue
+
+        # 类型
+        header_part = clean_src.split(",", 1)[0].lower()
+        if "image/jpeg" in header_part or "image/jpg" in header_part:
+            ext, mime = "jpg", "image/jpeg"
+        elif "image/webp" in header_part:
+            ext, mime = "webp", "image/webp"
+        elif "image/png" in header_part:
+            ext, mime = "png", "image/png"
+        else:
+            continue
+
+        alt_text = (img.get("alt") or "").strip()
+        caption = alt_text if alt_text else f"Figure {count}"
+
+        seen_src_hashes.add(src_hash)
+        images_data.append({
+            "index": count,
+            "filename": f"figure_{count}.{ext}",
+            "caption": caption,
+            "width": w,
+            "height": h,
+            "mime_type": mime,
+            "base64_content": clean_src,
+        })
+        count += 1
+
+    print(f"[extract_images] css_var_map={len(css_var_map)} images={len(images_data)}")
+
+    return {"ok": True, "article_id": data.article_id, "total": len(images_data), "images": images_data}
+
+
 
 async def handle_article_list(data: ArticleListReq):
     # 你说 list 就返回目录结构，所以 status 参数可以忽略或保留兼容
@@ -255,6 +511,219 @@ async def handle_task_select_article(data: TaskSelectArticleReq):
         content=cleaned,
     )
     return {"ok": True, "msg": f"Article '{title}' injected successfully."}
+
+def article_txt_path_from_html(article_abs_path: str) -> str:
+    """
+    /path/to/abc.html -> /path/to/abc.txt
+    """
+    base, _ = os.path.splitext(article_abs_path)
+    return base + ".txt"
+
+def article_lock_path(article_abs_path: str) -> str:
+    base, _ = os.path.splitext(article_abs_path)
+    return base + ".lock"
+
+def article_error_path(article_abs_path: str) -> str:
+    base, _ = os.path.splitext(article_abs_path)
+    return base + ".error"
+
+def try_acquire_lock(lock_path: str) -> bool:
+    """
+    原子创建 lock 文件
+    成功：返回 True
+    已存在：返回 False
+    """
+    try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+        return True
+    except FileExistsError:
+        return False
+    
+def release_lock(lock_path: str):
+    try:
+        os.remove(lock_path)
+    except FileNotFoundError:
+        pass
+
+def read_text_file(p: str) -> str:
+    with open(p, "r", encoding="utf-8", errors="ignore") as f:
+        return f.read()
+
+
+def write_text_file(p: str, content: str):
+    with open(p, "w", encoding="utf-8") as f:
+        f.write(content)
+ 
+async def handle_article_generate_blog(data: ArticleGenerateBlogReq):
+    """
+    Unified command-style blog generator.
+
+    Status machine:
+    - completed : return blog + images immediately
+    - running   : background worker is running
+    - failed    : generation failed
+    - started   : background worker just started
+    """
+
+    # --------------------------------------------------
+    # 0. Resolve paths
+    # --------------------------------------------------
+    abs_path = resolve_article_abs_path(data.article_id)
+
+    txt_path = article_txt_path_from_html(abs_path)
+    lock_path = article_lock_path(abs_path)
+    err_path = article_error_path(abs_path)
+
+    all_img_path = abs_path + ".images.json"
+    used_img_path = abs_path + ".used_images.json"
+
+    # --------------------------------------------------
+    # 1. COMPLETED
+    # --------------------------------------------------
+    if os.path.exists(txt_path):
+        blog_md = read_text_file(txt_path)
+
+        images = []
+        if os.path.exists(used_img_path):
+            images = json.loads(read_text_file(used_img_path))
+        elif os.path.exists(all_img_path):
+            images = json.loads(read_text_file(all_img_path))
+
+        return {
+            "ok": True,
+            "status": "completed",
+            "blog_markdown": blog_md,
+            "images": images,
+        }
+
+    # --------------------------------------------------
+    # 2. RUNNING
+    # --------------------------------------------------
+    if os.path.exists(lock_path):
+        return {
+            "ok": True,
+            "status": "running",
+        }
+
+    # --------------------------------------------------
+    # 3. FAILED
+    # --------------------------------------------------
+    if os.path.exists(err_path):
+        return {
+            "ok": False,
+            "status": "failed",
+            "error": read_text_file(err_path),
+        }
+
+    # --------------------------------------------------
+    # 4. Acquire lock
+    # --------------------------------------------------
+    try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+    except FileExistsError:
+        return {
+            "ok": True,
+            "status": "running",
+        }
+
+    # --------------------------------------------------
+    # 5. Background worker
+    # --------------------------------------------------
+    def worker():
+        try:
+            # ---------- Load article ----------
+            title, raw_html = load_raw_html(abs_path)
+            logger.info(f"Start generating blog for {title}.")
+            cleaned_text = clean_html_for_injection(raw_html)
+
+            # ---------- Extract images (ONLY HERE) ----------
+            img_result = asyncio.run(
+                handle_article_extract_images(
+                    ArticleExtractImagesReq(article_id=data.article_id)
+                )
+            )
+            all_images = img_result.get("images", [])
+
+            # persist ALL images
+            write_text_file(all_img_path, json.dumps(all_images, ensure_ascii=False, indent=2))
+
+            image_catalog = [
+                {
+                    "fig": str(img["index"]),
+                    "caption": img["caption"],
+                    "width": img["width"],
+                    "height": img["height"],
+                }
+                for img in all_images
+            ]
+
+            # ---------- Blog config ----------
+            config = BlogGenConfig(
+                model_name=data.model_name,
+                api_key=data.api_key,
+                llm_url=data.llm_url,
+                style=data.style or "math",
+                l1_points=5,
+                l2_points=4,
+            )
+
+            task_dir = f"{DATA_DIR}/tasks/{data.task_id}"
+            tc = Tool_Calls(LOG_DIR=task_dir, MAX_CHAR=800000, mode="Summary")
+
+            # ---------- Heavy generation ----------
+            future = BLOG_JOB_QUEUE.submit(
+                lambda: generate_blog_from_article_tree(
+                    task_id=data.task_id,
+                    article_id=data.article_id,
+                    article_title=title,
+                    article_text=cleaned_text,
+                    image_catalog=image_catalog,
+                    config=config,
+                    tc=tc,
+                )
+            )
+            
+            result = future.result()
+
+            blog_md = result["blog_markdown"]
+            used_figs = set(result.get("used_figs", []))
+
+            # ---------- Filter used images ----------
+            used_images = [
+                img for img in all_images
+                if str(img.get("index")) in used_figs
+            ]
+
+            # ---------- Persist ----------
+            write_text_file(txt_path, blog_md)
+            write_text_file(
+                used_img_path,
+                json.dumps(used_images, ensure_ascii=False, indent=2),
+            )
+            logger.info(f"Complete generating blog for {title}.")
+
+        except Exception as e:
+            traceback.print_exc()
+            write_text_file(err_path, str(e))
+
+        finally:
+            try:
+                os.remove(lock_path)
+            except FileNotFoundError:
+                pass
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    # --------------------------------------------------
+    # 6. Immediate ACK
+    # --------------------------------------------------
+    return {
+        "ok": True,
+        "status": "started",
+    }
+
 
 # === 任务控制 & LLM 部分 (保持不变) ===
 
@@ -376,23 +845,124 @@ async def handle_llm_query(data: LLMRequestData):
 
     def terminal_send_command(session_id: str, command: str) -> str:
         """
-        Send a raw command string (e.g., 'ls -la\r') to a specific terminal session.
+        LOW-LEVEL TERMINAL INPUT (RAW KEYSTROKES)
 
-        ⚠️ IMPORTANT:
-        This interface operates as a low-level Physical Terminal Simulation (PTY). 
-        It strictly mimics human keyboard interaction. To execute a command, 
-        you MUST include a carriage return '\r' at the end of the string. 
-        Without it, the characters will only be typed into the input buffer 
-        without being triggered for execution.
+        This function sends raw characters directly into a PTY, exactly like
+        a human typing on a physical keyboard.
+
+        IMPORTANT SEMANTICS:
+        --------------------
+        - This function DOES NOT know what a "command" is.
+        - It DOES NOT automatically append '\\r' (Enter).
+        - It DOES NOT guarantee execution, completion, or correctness.
+        - It DOES NOT perform any safety checks.
+
+        Typical Use Cases:
+        ------------------
+        - Interactive programs (vim, nano, less, htop, python REPL)
+        - Password / sudo prompts
+        - Sending control sequences (e.g. '\\x03' for Ctrl+C)
+        - Navigation keys and incremental input
+
+        DANGER:
+        -------
+        This is the MOST POWERFUL and MOST DANGEROUS terminal interface.
+        Misuse can:
+        - Corrupt shell state
+        - Interleave inputs
+        - Bypass safety mechanisms
+        - Cause irreversible side effects
+
+        ONLY use this when you intentionally want to simulate
+        low-level human keyboard behavior.
+
+        Parameters:
+        -----------
+        session_id : str
+            Target terminal session identifier.
+
+        command : str
+            Raw characters to inject into the PTY.
+            To actually execute a shell command, you MUST include '\\r'
+            manually at the end of the string.
 
         Returns:
-            dict: A snapshot of the screen immediately following the input.
+        --------
+        str
+            A snapshot of the terminal screen immediately after the input.
+            This does NOT imply that execution has completed.
         """
         return history_manager.send_to_session(
-            task_id=data.task_id, 
-            session_id=session_id, 
+            task_id=data.task_id,
+            session_id=session_id,
             data=command
         )
+        
+    def terminal_exec_command(session_id: str, command: str) -> str:
+        """
+        HIGH-LEVEL SHELL COMMAND EXECUTION (AUTO-ENTER)
+
+        This function represents a higher-level human action:
+        typing a complete shell command AND pressing Enter.
+
+        Compared to `terminal_send_command`, this function:
+        ---------------------------------------------------
+        - Automatically appends '\\r' to the input
+        - Intentionally triggers execution
+        - Still operates on PTY (not subprocess)
+        - Still does NOT guarantee command completion
+
+        What this function IS:
+        ----------------------
+        - A convenience wrapper for common shell usage
+        - A semantic signal: "this is intended to be executed"
+        - Safer than raw typing, but still NOT fully safe
+
+        What this function is NOT:
+        --------------------------
+        - It does NOT wait for the command to finish
+        - It does NOT parse output
+        - It does NOT detect shell prompt
+        - It does NOT protect against dangerous commands
+
+        Appropriate Use Cases:
+        ----------------------
+        - Simple shell commands (ls, cd, cat, pwd)
+        - Non-interactive utilities
+        - LLM tool calls that represent a single command
+
+        NOT suitable for:
+        -----------------
+        - vim / nano / less
+        - Password input
+        - Multi-step interactive workflows
+
+        Parameters:
+        -----------
+        session_id : str
+            Target terminal session identifier.
+
+        command : str
+            Shell command WITHOUT trailing '\\r'.
+
+        Returns:
+        --------
+        str
+            A snapshot of the terminal screen immediately after
+            the Enter key is pressed.
+            Execution may still be in progress.
+        """
+        # Normalize input: remove accidental newlines
+        cmd = command.rstrip("\n\r")
+
+        # Append Enter explicitly
+        return history_manager.send_to_session(
+            task_id=data.task_id,
+            session_id=session_id,
+            data=cmd + "\r"
+        )
+
+
 
     def terminal_get_status(session_id: str) -> str:
         """
@@ -432,10 +1002,10 @@ async def handle_llm_query(data: LLMRequestData):
     ct = custom_tools()
     if data.enable_fc:
         tools.extend([
-            # ct.web_fetch, 
-            # ct.search,
+            ct.func_search,
             terminal_create_new, 
             terminal_send_command, 
+            terminal_exec_command,
             # terminal_get_status, 
             terminal_terminate_session,
             terminal_stage_command,
@@ -460,9 +1030,10 @@ async def handle_llm_query(data: LLMRequestData):
             "1. Answer in the same language.",
             "2. Use $$ for math (e.g. $$x^2$$).",
             "3. Pinyin -> Chinese.",
+            "4. If clarification is needed, ask the user directly without invoking any tools."
         ]
         if data.system_prompt_mode == "concise":
-            base_rules.append("4. Be concise.")
+            base_rules.append("5. Be concise.")
             
         # 获取挂起状态并注入 System Prompt
         pending = history_manager.get_pending_command(data.task_id)
@@ -575,6 +1146,12 @@ async def gateway_endpoint(req: ActionRequest):
                 "content": f"【User Manual Action】User REJECTED the pending command: {pending['command']}."
             }])
             return {"ok": True}
+        
+        if req.action == "article_generate_blog":
+            return await handle_article_generate_blog(
+                TypeAdapter(ArticleGenerateBlogReq).validate_python(req.data)
+            )
+
         
     except Exception as e:
         traceback.print_exc()

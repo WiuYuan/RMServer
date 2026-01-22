@@ -1,124 +1,801 @@
 nohup: ignoring input
-INFO:     Started server process [816818]
+INFO:     Started server process [2175304]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-Action: task_get_terminal_status
-INFO:     129.126.14.71:0 - "POST /gateway HTTP/1.1" 200 OK
+INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+2026-01-23 02:20:07,293 [Thread-2 (worker)] INFO: Start generating blog for Why extinction estimates from extant phylogenies are so often zero： Current Biology.
+[extract_images] css_var_map=3 images=3
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+2026-01-23 02:20:08,875 [Thread-3 (worker)] INFO: Start generating blog for Unifying approaches from statistical genetics and phylogenetics for mapping phenotypes in structured populations - PMC.
+[extract_images] css_var_map=6 images=4
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+2026-01-23 02:20:10,520 [Thread-4 (worker)] INFO: Start generating blog for Unifying Phylogenetic Birth–Death Models in Epidemiology and Macroevolution - PMC.
+[extract_images] css_var_map=6 images=2
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+2026-01-23 02:20:11,772 [Thread-5 (worker)] INFO: Start generating blog for Major Features of Macroevolution ｜ Systematic Biology ｜ Oxford Academic.
+[extract_images] css_var_map=0 images=4
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+2026-01-23 02:20:13,254 [Thread-6 (worker)] INFO: Start generating blog for Rethinking phylogenetic comparative methods ｜ Systematic Biology ｜ Oxford Academic.
+[extract_images] css_var_map=0 images=10
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+2026-01-23 02:20:14,496 [Thread-7 (worker)] INFO: Start generating blog for Macroevolutionary divergence of gene expression driven by selection on protein abundance - PMC.
+[extract_images] css_var_map=6 images=4
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+2026-01-23 02:20:15,796 [Thread-8 (worker)] INFO: Start generating blog for Extant timetrees are consistent with a myriad of diversification histories ｜ Nature.
+[extract_images] css_var_map=0 images=3
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+2026-01-23 02:20:16,816 [Thread-9 (worker)] INFO: Start generating blog for Alternate histories in macroevolution - PMC.
+[extract_images] css_var_map=6 images=0
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
 INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
+INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+2026-01-23 02:24:32,959 [Thread-2 (worker)] INFO: Complete generating blog for Why extinction estimates from extant phylogenies are so often zero： Current Biology.
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+INFO:     42.60.46.115:0 - "OPTIONS /gateway HTTP/1.1" 200 OK
+Action: article_list
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+INFO:     122.161.69.218:0 - "GET / HTTP/1.1" 404 Not Found
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+INFO:     42.60.46.115:0 - "OPTIONS /gateway HTTP/1.1" 200 OK
+Action: article_list
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+INFO:     42.60.46.115:0 - "OPTIONS /gateway HTTP/1.1" 200 OK
+Action: article_list
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+2026-01-23 02:30:20,265 [Thread-3 (worker)] INFO: Complete generating blog for Unifying approaches from statistical genetics and phylogenetics for mapping phenotypes in structured populations - PMC.
+INFO:     42.60.46.115:0 - "OPTIONS /gateway HTTP/1.1" 200 OK
+Action: article_list
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
+Action: article_list
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+2026-01-23 02:36:36,907 [Thread-4 (worker)] INFO: Complete generating blog for Unifying Phylogenetic Birth–Death Models in Epidemiology and Macroevolution - PMC.
+INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
+INFO:     42.60.46.115:0 - "OPTIONS /gateway HTTP/1.1" 200 OK
+Action: article_list
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
+INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
+INFO:     103.254.149.34:0 - "POST / HTTP/1.1" 404 Not Found
+INFO:     103.254.149.34:0 - "POST /index.php HTTP/1.1" 404 Not Found
+INFO:     103.254.149.34:0 - "POST /admin HTTP/1.1" 404 Not Found
+INFO:     103.254.149.34:0 - "POST /api HTTP/1.1" 404 Not Found
+2026-01-23 02:41:20,311 [Thread-5 (worker)] INFO: Complete generating blog for Major Features of Macroevolution ｜ Systematic Biology ｜ Oxford Academic.
+INFO:     42.60.46.115:0 - "OPTIONS /gateway HTTP/1.1" 200 OK
+Action: article_list
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+INFO:     2a09:bac1:b00:10::242:c6:0 - "GET /wp-login.php HTTP/1.1" 404 Not Found
+2026-01-23 02:46:57,409 [Thread-6 (worker)] INFO: Complete generating blog for Rethinking phylogenetic comparative methods ｜ Systematic Biology ｜ Oxford Academic.
+Traceback (most recent call last):
+  File "/home/ubuntu/workspace/RMServer/server.py", line 688, in worker
+    result = future.result()
+             ^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.pyenv/versions/3.12.0/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.pyenv/versions/3.12.0/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/home/ubuntu/workspace/RMServer/src/services/blog_job_queue.py", line 32, in _run
+    result = func()
+             ^^^^^^
+  File "/home/ubuntu/workspace/RMServer/server.py", line 677, in <lambda>
+    lambda: generate_blog_from_article_tree(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/workspace/RMServer/src/utils/article_blog_generator.py", line 214, in generate_blog_from_article_tree
+    i, children = fut.result()
+                  ^^^^^^^^^^^^
+  File "/home/ubuntu/.pyenv/versions/3.12.0/lib/python3.12/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.pyenv/versions/3.12.0/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/home/ubuntu/.pyenv/versions/3.12.0/lib/python3.12/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/workspace/RMServer/src/utils/article_blog_generator.py", line 208, in expand_l1
+    arr = _extract_json_array(raw)
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/workspace/RMServer/src/utils/article_blog_generator.py", line 79, in _extract_json_array
+    return json.loads(sliced)
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.pyenv/versions/3.12.0/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.pyenv/versions/3.12.0/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.pyenv/versions/3.12.0/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Invalid \escape: line 2 column 57 (char 58)
+INFO:     42.60.46.115:0 - "OPTIONS /gateway HTTP/1.1" 200 OK
+Action: article_list
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+Action: article_generate_blog
+INFO:     42.60.46.115:0 - "POST /gateway HTTP/1.1" 200 OK
+2026-01-23 02:52:27,267 [Thread-8 (worker)] INFO: Complete generating blog for Extant timetrees are consistent with a myriad of diversification histories ｜ Nature.
+INFO:     47.236.238.255:0 - "POST / HTTP/1.1" 404 Not Found
+INFO:     47.236.238.255:0 - "POST /index.php HTTP/1.1" 404 Not Found
+INFO:     47.236.238.255:0 - "POST /admin HTTP/1.1" 404 Not Found
+INFO:     47.236.238.255:0 - "POST /api HTTP/1.1" 404 Not Found
+INFO:     45.64.52.162:0 - "POST / HTTP/1.1" 404 Not Found
+INFO:     45.64.52.162:0 - "POST /index.php HTTP/1.1" 404 Not Found
+INFO:     45.64.52.162:0 - "POST /admin HTTP/1.1" 404 Not Found
+INFO:     45.64.52.162:0 - "POST /api HTTP/1.1" 404 Not Found
 INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
 INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
 INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     172.82.65.38:0 - "GET / HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET / HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET / HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /xmlrpc.php?rsd HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET / HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /blog/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /web/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /wordpress/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /website/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /wp/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /news/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /2018/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /2019/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /shop/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /wp1/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /test/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /media/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /wp2/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /site/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /cms/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.29.37.105:0 - "GET /sito/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     34.48.166.126:0 - "GET / HTTP/1.1" 404 Not Found
-INFO:     34.48.166.126:0 - "GET /wp-includes/ID3/license.txt HTTP/1.1" 404 Not Found
-INFO:     34.48.166.126:0 - "GET /feed/ HTTP/1.1" 404 Not Found
-INFO:     34.48.166.126:0 - "GET /xmlrpc.php?rsd HTTP/1.1" 404 Not Found
-INFO:     34.48.166.126:0 - "GET /blog/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.48.166.126:0 - "GET /web/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.48.166.126:0 - "GET /wordpress/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.48.166.126:0 - "GET /wp/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.48.166.126:0 - "GET /2020/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.48.166.126:0 - "GET /2019/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.48.166.126:0 - "GET /2021/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.48.166.126:0 - "GET /shop/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.48.166.126:0 - "GET /wp1/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.48.166.126:0 - "GET /test/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.48.166.126:0 - "GET /site/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     34.48.166.126:0 - "GET /cms/wp-includes/wlwmanifest.xml HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     18.234.190.41:0 - "GET / HTTP/1.1" 404 Not Found
-INFO:     18.234.190.41:0 - "GET /favicon.ico HTTP/1.1" 404 Not Found
-INFO:     18.234.190.41:0 - "GET /favicon.png HTTP/1.1" 404 Not Found
-INFO:     54.164.157.105:0 - "GET / HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     103.4.250.192:0 - "GET / HTTP/1.1" 404 Not Found
-INFO:     103.4.250.192:0 - "GET /favicon.ico HTTP/1.1" 404 Not Found
-INFO:     103.196.9.234:0 - "GET / HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2600:1900:0:4003::1c00:0 - "GET / HTTP/1.1" 404 Not Found
-INFO:     2600:1900:0:4005::1901:0 - "GET /favicon.ico HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     101.33.66.34:0 - "GET / HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found
-INFO:     2a06:98c0:3600::103:0 - "GET /wp-admin/setup-config.php HTTP/1.1" 404 Not Found
+2026-01-23 02:57:01,741 [Thread-9 (worker)] INFO: Complete generating blog for Alternate histories in macroevolution - PMC.
 INFO:     2a06:98c0:3600::103:0 - "GET /wordpress/wp-admin/setup-config.php HTTP/1.1" 404 Not Found

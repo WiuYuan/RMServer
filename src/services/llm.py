@@ -117,14 +117,13 @@ class LLM:
         ]
         try:
             result = self.query_messages(messages, verbose=verbose)
-            self.ec.send_message(None)
+            if self.ec is not None:
+                self.ec.send_message(None)
             return result
         finally:
             # 🔚 唯一的 EOS：通知 consumer 本次流式输出结束
             if self.ec is not None:
                 self.ec.send_message(None)
-                
-            return ""
         # if verbose:
         #     self.ec.send_message(
         #         {

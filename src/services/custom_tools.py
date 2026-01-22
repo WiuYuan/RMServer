@@ -974,69 +974,142 @@ class custom_tools:
 
         return "\n".join(results)
     
-    def _search_with_serpapi(self, query: str) -> str:
+    # def _search_with_serpapi(self, query: str) -> str:
+    #     """
+    #     Perform search using SerpApi and return the search result. You can use this function to search, and then use web_fetch to get.
+
+    #     Args:
+    #         query (str): The search query to execute.
+
+    #     Returns:
+    #         str: The raw JSON response from SerpApi or error message.
+    #     """
+    #     params = {
+    #         'q': query,
+    #         'engine': 'google',
+    #         'api_key': "3afc903b1ac711e49116f632133dd33ebf98f5481eed762e6cfe80e35fe7f053"
+    #     }
+
+    #     try:
+    #         response = requests.get("https://serpapi.com/search", params=params)
+    #         response.raise_for_status()
+    #         return response.text  # Return raw JSON as a string
+    #     except requests.exceptions.RequestException as e:
+    #         return f"Error: {str(e)}"
+
+    # def search(self, query: str) -> str:
+    #     """
+    #     Using SerpApi to search, please use English as query.
+
+    #     Args:
+    #         query (str): Search query, please use English as query.
+
+    #     Returns:
+    #         str: Processed results or error message
+    #     """
+    #     # Perform the search and get results
+    #     raw_response = self._search_with_serpapi(query)
+        
+    #     # Try to parse the JSON response
+    #     try:
+    #         response_json = json.loads(raw_response)
+    #         return json.dumps(response_json, indent=2)  # Beautified JSON output
+    #     except json.JSONDecodeError:
+    #         return "Error: Invalid JSON response from SerpApi."
+        
+    # def web_fetch(self, url: str) -> str:
+    #     """
+    #     Fetches data from a given URL.
+
+    #     Args:
+    #         url (str): The full URL to fetch data from.
+
+    #     Returns:
+    #         str: The content of the response or an error message.
+    #     """
+    #     try:
+    #         response = requests.get(url, timeout=10)  # 10秒超时
+    #         response.raise_for_status()
+    #         return response.json()
+    #     except requests.exceptions.Timeout:
+    #         return "Error: fetch failed (timeout > 10s)."
+    #     except requests.exceptions.RequestException as e:
+    #         return f"Error: fetch failed ({e})."
+    #     except ValueError:
+    #         return "Error: Invalid JSON response."
+
+    def func_search(
+        self,
+        query: str,
+        max_results: int = 5,
+        search_depth: str = "basic",
+    ) -> str:
         """
-        Perform search using SerpApi and return the search result. You can use this function to search, and then use web_fetch to get.
+        IMPORTANT NOTE:
+        When the model (Grok) decides to call the search tool. Keep the tool name and description in English to match what the model expects.
+
+        Call the Tavily search API and return a formatted text result suitable for feeding to an LLM.
 
         Args:
-            query (str): The search query to execute.
+            query: The search keyword or question
+            api_key: Your Tavily API Key
+            max_results: Number of search results to return (default 5, max 20)
+            search_depth: "basic" (saves credits) or "advanced" (more accurate)
 
         Returns:
-            str: The raw JSON response from SerpApi or error message.
+            A formatted string containing the query, answer (if any), and list of results
         """
-        params = {
-            'q': query,
-            'engine': 'google',
-            'api_key': "3afc903b1ac711e49116f632133dd33ebf98f5481eed762e6cfe80e35fe7f053"
+        url = "https://api.tavily.com/search"
+        api_key = "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"
+        
+        payload = {
+            "api_key": api_key,
+            "query": query,
+            "search_depth": search_depth,
+            "include_answer": False,
+            "include_raw_content": False,
+            "max_results": max_results,
+            # Optional parameters (uncomment if needed)
+            # "include_images": False,
+            # "include_domains": ["accuweather.com", "weather.com"],
+            # "exclude_domains": ["wikipedia.org"]
         }
 
         try:
-            response = requests.get("https://serpapi.com/search", params=params)
-            response.raise_for_status()
-            return response.text  # Return raw JSON as a string
+            response = requests.post(url, json=payload, timeout=60)
+            response.raise_for_status()  # Raise exception for non-200 status
+            
+            data = response.json()
+
+            # Build a clean, LLM-friendly text output
+            result_text = f"Query: {data['query']}\n"
+            
+            if data.get('answer'):
+                result_text += f"\nTavily Summary Answer:\n{data['answer']}\n\n"
+            
+            result_text += "Search Results:\n"
+            for idx, item in enumerate(data.get('results', []), 1):
+                result_text += f"[{idx}] {item['title']}\n"
+                result_text += f"URL: {item['url']}\n"
+                result_text += f"Relevance Score: {item['score']:.3f}\n"
+                
+                # Prefer raw_content if available, otherwise fall back to content
+                content = item.get('raw_content') or item.get('content') or ""
+                if content:
+                    result_text += f"Content:\n{content}\n"
+                result_text += "-" * 60 + "\n"
+
+            result_text += f"\nResponse Time: {data.get('response_time', 'unknown')} seconds"
+
+            return result_text.strip()
+
         except requests.exceptions.RequestException as e:
-            return f"Error: {str(e)}"
-
-    def search(self, query: str) -> str:
-        """
-        Using SerpApi to search, please use English as query.
-
-        Args:
-            query (str): Search query, please use English as query.
-
-        Returns:
-            str: Processed results or error message
-        """
-        # Perform the search and get results
-        raw_response = self._search_with_serpapi(query)
-        
-        # Try to parse the JSON response
-        try:
-            response_json = json.loads(raw_response)
-            return json.dumps(response_json, indent=2)  # Beautified JSON output
+            return f"Search failed: {str(e)}\nStatus code: {getattr(response, 'status_code', 'unknown')}"
         except json.JSONDecodeError:
-            return "Error: Invalid JSON response from SerpApi."
-        
-    def web_fetch(self, url: str) -> str:
-        """
-        Fetches data from a given URL.
+            return "Search response is not valid JSON, possible API issue"
+        except Exception as e:
+            return f"Unexpected error: {str(e)}"
 
-        Args:
-            url (str): The full URL to fetch data from.
-
-        Returns:
-            str: The content of the response or an error message.
-        """
-        try:
-            response = requests.get(url, timeout=10)  # 10秒超时
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.Timeout:
-            return "Error: fetch failed (timeout > 10s)."
-        except requests.exceptions.RequestException as e:
-            return f"Error: fetch failed ({e})."
-        except ValueError:
-            return "Error: Invalid JSON response."
 
 def chunk_text_by_chars(text: str, max_chars: int = 500, overlap: int = 50):
     """

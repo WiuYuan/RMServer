@@ -237,6 +237,110 @@ class Tool_Calls:
         self.save(tool_calls_dict)
 
         return collapsed_messages
+    
+    def dehydrate_content(self, target_content: str, hash_val: str, filename: str):
+        """
+        【历史脱水】
+        遍历所有历史记录，如果发现 content 中包含 target_content，
+        则将其替换为脱水标记。
+        """
+        tool_calls_dict = self.get_all_value()
+        all_msgs = tool_calls_dict["tool_calls"]
+        summarize_msgs = tool_calls_dict.get("summarize_tool_call", [])
+        
+        changed = False
+
+        # 1. 处理主历史
+        for msg in all_msgs:
+            if msg.get("content") and target_content in msg["content"]:
+                # 使用特殊的脱水格式，告知 LLM 这里的代码已经变成悬挂状态
+                placeholder = f"\n[CODE_STAGED: {filename} | HASH: {hash_val} | CONTENT_OMITTED]\n"
+                msg["content"] = msg["content"].replace(target_content, placeholder)
+                changed = True
+        
+        # 2. 处理已折叠的摘要 (Summary 模式)
+        for msg in summarize_msgs:
+            if msg.get("content") and target_content in msg["content"]:
+                placeholder = f"\n[CODE_STAGED: {filename} | HASH: {hash_val}]\n"
+                msg["content"] = msg["content"].replace(target_content, placeholder)
+                changed = True
+
+        if changed:
+            self.save(tool_calls_dict)
+        return changed
+
+    def inject_pinned_content(self, hash_val: str, filename: str, content: str):
+        """
+        【历史注入】
+        在历史记录的最后手动插入一条记录，告知 LLM 该 Hash 关联的当前完整代码。
+        这种情况通常发生在：
+        1. 代码刚被挂起时
+        2. LLM 询问该 Hash 具体内容时
+        """
+        # 我们使用 assistant 角色发送一个“环境同步”消息
+        injection_msg = {
+            "role": "assistant",
+            "content": (
+                f"[SYSTEM_SYNC]\n"
+                f"The following content is now Pinned and associated with Hash: {hash_val}\n"
+                f"File: {filename}\n"
+                f"--- CONTENT START ---\n"
+                f"{content}\n"
+                f"--- CONTENT END ---\n"
+                f"Use the § Start/End/Replace protocol to propose edits to this hash."
+            )
+        }
+        self.extend([injection_msg])
+
+    def force_refresh_hash(self, old_hash: str, new_hash: str, new_content: str, filename: str):
+        """
+        【状态更新】
+        当代码修改成功并产生新 Hash 时：
+        1. 将记录中的所有旧 Hash 占位符更新为新 Hash (可选)
+        2. 注入当前的新鲜内容
+        """
+        # 这通常结合 inject_pinned_content 使用
+        self.inject_pinned_content(new_hash, filename, new_content)
+        
+    def remove_temporary_context(self):
+        """
+        物理删除所有带有 [TEMPORARY_CONTEXT] 标记的消息
+        """
+        data = self.get_all_value()
+        original_len = len(data["tool_calls"])
+        
+        # 过滤掉所有包含标记的消息
+        data["tool_calls"] = [
+            msg for msg in data["tool_calls"] 
+            if not (isinstance(msg.get("content"), str) and "[TEMPORARY_CONTEXT]" in msg["content"])
+        ]
+        
+        if len(data["tool_calls"]) != original_len:
+            self.save(data)
+            return True
+        return False
+
+    def inject_temporary_context(self, pinned_codes: List[Any]):
+        """
+        将当前的挂载代码作为一条新的临时消息存入磁盘
+        """
+        if not pinned_codes:
+            return
+
+        blocks = []
+        for p in pinned_codes:
+            blocks.append(f"File: {p.filename} (Hash: {p.hash})\n```\n{p.content}\n```")
+        
+        tmp_msg = {
+            "role": "assistant",
+            "content": (
+                "[TEMPORARY_CONTEXT] Current Pinned Files:\n" + 
+                "\n\n".join(blocks) + 
+                "\n[End of Temporary Context]"
+            )
+        }
+        # 直接持久化到磁盘
+        self.extend([tmp_msg])
 
 
 def generate_call_id():

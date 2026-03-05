@@ -61,10 +61,7 @@ class BlogGenConfig(BaseModel):
 
 def _extract_json_array(text: str) -> List[dict]:
     """
-    Robust JSON array extraction:
-    - find first '['
-    - find last ']'
-    - parse only inside
+    Robust JSON array extraction with backslash fix.
     """
     if not text:
         raise ValueError("Empty LLM output")
@@ -73,11 +70,27 @@ def _extract_json_array(text: str) -> List[dict]:
     end = text.rfind("]")
 
     if start == -1 or end == -1 or end <= start:
-        raise ValueError("No JSON array found in LLM output")
+        raise ValueError(f"No JSON array found in LLM output: {text[:200]}")
 
     sliced = text[start : end + 1]
-    return json.loads(sliced)
-
+    
+    try:
+        return json.loads(sliced)
+    except json.JSONDecodeError:
+        # --- 核心修复代码 ---
+        # 很多 LLM 会返回 "point": "Use \alpha" 这种非法 JSON
+        # 我们寻找反斜杠，如果它后面跟的不是 JSON 标准转义符 (u, n, r, t, b, f, ", /)
+        # 就把它替换为双反斜杠 \\
+        import re
+        # 匹配反斜杠，排除掉它后面跟着合法转义字符的情况
+        fixed = re.sub(r'\\(?![u"bfnrt/])', r'\\\\', sliced)
+        try:
+            return json.loads(fixed)
+        except json.JSONDecodeError as e:
+            # 如果还报错，可能是因为 \ 后面刚好跟着一个 n (比如 \node)，
+            # 这种情况正则很难区分是换行还是公式，只能记录日志并抛出
+            print(f"JSON Parse Error after fix. Original: {sliced}")
+            raise e
 
 def _json_array_rule() -> str:
     return (
@@ -120,9 +133,6 @@ def _build_full_context(title, text, images, max_chars) -> str:
     return f"""
 文章标题：
 {title}
-
-可用图片（只能使用 [[FIG:x]] 占位）：
-{json.dumps(images, ensure_ascii=False)}
 
 文章正文（全文上下文，每一步都提供，可能被截断）：
 {text[:max_chars]}
@@ -234,7 +244,7 @@ def generate_blog_from_article_tree(
 {n2.point}
 
 规则：
-- 可使用图片：{figs}
+- 图片通过文章中的类似于figure 1B这种, 你就说成[[FIG:1]]中的B图, 任何类似于figure S1B这种在附录中的图片, 你无需引用, 只考虑正文中的图片
 - 图片必须用 [[FIG:x]] 占位, 注意, 任何图片类似于[[FIG:1B]]这种是不能接受的, 必须写成[[FIG:1]], 然后你在引用的时候, 说明是B图
 - 定义关键概念，逻辑自洽
 - 使用中文
@@ -278,8 +288,8 @@ def generate_blog_from_article_tree(
 
 规则：
 - 合并重复内容
-- 可使用图片：{figs}
 - 使用中文
+- 图片通过文章中的类似于figure 1B这种, 你就说成[[FIG:1]]中的B图, 任何类似于figure S1B这种在附录中的图片, 你无需引用, 只考虑正文中的图片
 - 文章中的需要用图解释的地方, 图片必须用 [[FIG:x]] 占位, 注意, 任何图片类似于[[FIG:1B]]这种是不能接受的, 必须写成[[FIG:1]], 然后你在引用的时候, 说明是B图
 """
         llm_raw = llm.query(prompt, False)
@@ -310,12 +320,13 @@ def generate_blog_from_article_tree(
 要求：
 - 标题：# {article_title}
 - 开头 TL;DR (5-8 条)
-- 可使用图片：{figs}
+- 图片通过文章中的类似于figure 1B这种, 你就说成[[FIG:1]]中的B图, 任何类似于figure S1B这种在附录中的图片, 你无需引用, 只考虑正文中的图片
 - 文章中的需要用图解释的地方, 必须使用 [[FIG:x]] 占位, 注意, 任何图片类似于[[FIG:1B]]这种是不能接受的, 必须写成[[FIG:1]], 然后你在引用的时候, 说明是B图
 - 使用中文
 - 讲清楚文章的背景内容, 得到的结论等关键信息
 - 合并重复内容, 你最后需要给出的是一个讲解清楚的博客, 需要有你自己的逻辑链条
 - 最后给 Figure Index 部分, 每张图必须引用 [[FIG:x]] (这样我才能看得见), 每张图请说明各个子图都是什么意思, 比如A, B, C, ...
+- Figure Index 必须包含所有正文图片解释, 也就是figure 1B, figure 2C这些东西
 - 任何数学公式, **不要使用()或者[], 正确的使用方法是$$, 一个例子是不要(\A_i\), (A_i), 而是$A_i$**
 """
     blog_md = llm_main.query(prompt_final, False)

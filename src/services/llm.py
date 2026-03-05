@@ -225,19 +225,27 @@ class LLM:
                         print(
                             f"\nCalling function '{func_name}' with arguments:\n{formatted_args}"
                         )
-                        # self.ec.send_message(
-                        #         {
-                        #             "type": "llm_info",
-                        #             "data": {
-                        #                 "content": f"Calling function '{func_name}' with arguments:\n{formatted_args}",
-                        #             },
-                        #         }
-                        #     )
+                        self.ec.send_message(
+                                {
+                                    "type": "llm_info",
+                                    "data": {
+                                        "content": f"Calling function '{func_name}' with arguments:\n{formatted_args}\n",
+                                    },
+                                }
+                            )
                     if tool_runner is None:
                         result = func_dict[func_name](**args)
                         should_stop = False
                     else: 
                         result, should_stop = tool_runner(func_dict[func_name], args)
+                    self.ec.send_message(
+                        {
+                            "type": "llm_info",
+                            "data": {
+                                "content": f"Complete calling function '{func_name}'.\n",
+                            },
+                        }
+                    )
                 else:
                     result = f"Function {func_name} not found"
                 if should_stop:
@@ -332,15 +340,15 @@ class LLM:
                     if token:
                         text_accumulate += token
                         if verbose:
-                            # print(token.replace("\n", "\n    "), end="", flush=True)
-                            self.ec.send_message(
-                                {
-                                    "type": "llm_info",
-                                    "data": {
-                                        "content": token,
-                                    },
-                                }
-                            )
+                            print(token.replace("\n", "\n    "), end="", flush=True)
+                            # self.ec.send_message(
+                            #     {
+                            #         "type": "llm_info",
+                            #         "data": {
+                            #             "content": token,
+                            #         },
+                            #     }
+                            # )
 
                 if self.format == "openai":
                     line_str = line_str[len("data: ") :]
@@ -362,15 +370,15 @@ class LLM:
                     if token:
                         text_accumulate += token
                         if verbose:
-                            # print(token.replace("\n", "\n    "), end="", flush=True)
-                            self.ec.send_message(
-                                {
-                                    "type": "llm_info",
-                                    "data": {
-                                        "content": token,
-                                    },
-                                }
-                            )
+                            print(token.replace("\n", "\n    "), end="", flush=True)
+                            # self.ec.send_message(
+                            #     {
+                            #         "type": "llm_info",
+                            #         "data": {
+                            #             "content": token,
+                            #         },
+                            #     }
+                            # )
 
         # Optionally remove <think> blocks
         if self.remove_think_enabled:
@@ -490,7 +498,7 @@ class LLM:
                                     },
                                 }
                             )
-                            # print(token.replace("\n", "\n    "), end="", flush=True)
+                            print(token.replace("\n", "\n    "), end="", flush=True)
 
                     if "message" in chunk and "tool_calls" in chunk["message"]:
                         tool_calls.extend(chunk["message"]["tool_calls"])
@@ -503,6 +511,15 @@ class LLM:
                         chunk = json.loads(line_str)
                     except json.JSONDecodeError as e:
                         print(f"Failed to parse JSON from line: {line_str}")
+                        if verbose:
+                            self.ec.send_message(
+                                {
+                                    "type": "llm_info",
+                                    "data": {
+                                        "content": "⧖",
+                                    },
+                                }
+                            )
                         # if line_str.startswith("-alive"):
                         continue
                         # print(messages)
@@ -526,7 +543,7 @@ class LLM:
                                     },
                                 }
                             )
-                        print(token.replace("\n", "\n    "), end="", flush=True)
+                            print(token.replace("\n", "\n    "), end="", flush=True)
 
         # Optionally remove <think> blocks
         if self.remove_think_enabled:

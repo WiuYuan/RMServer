@@ -1,9 +1,14 @@
+# src/config.py
 import os
+from pathlib import Path
 
-SECRET_FILE = "/home/ubuntu/.env_secret"
-DATA_DIR = "/home/ubuntu/workspace/data"
-ARTICLES_ROOT = f"{DATA_DIR}/articles"
-PLAYBOOK_ROOT = f"{DATA_DIR}/playbook"
+DATA_DIR = Path("~/.rmserver").expanduser()
+
+SECRET_FILE = DATA_DIR / ".env_secret"
+ARTICLES_ROOT = DATA_DIR / "articles"
+PLAYBOOK_ROOT = DATA_DIR / "playbook"
+TERMINALS_ROOT = DATA_DIR / "terminals"
+RECORDINGS_ROOT = DATA_DIR / "recordings"
 PLAYBOOK_ACTIONS_NEED_ROOT = {
     "playbook_list",
     "playbook_get",

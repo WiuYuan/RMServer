@@ -1,10 +1,12 @@
+# src/models/requests.py
 from pydantic import BaseModel
 from typing import Optional, Any, Literal
+from src.config import PLAYBOOK_ROOT
 
 
 # === 数据模型 ===
 class PlaybookSuggestNextStepReq(BaseModel):
-    playbook_root: str = "/home/ubuntu/workspace/data/playbook"
+    playbook_root: str = PLAYBOOK_ROOT
     model_name: str
     api_key: str
     llm_url: Optional[str] = "https://api.deepseek.com/v1/chat/completions"
@@ -62,6 +64,7 @@ class LLMRequestData(BaseModel):
     task_id: Optional[str] = "1"
     system_prompt_mode: Optional[str] = "default"
     enable_fc: Optional[bool] = False
+    trim_history: Optional[bool] = False
     pinned_codes: Optional[list[PinnedCode]] = []
 
 class ActionRequest(BaseModel):

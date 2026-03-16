@@ -3,6 +3,7 @@
 import requests
 import json
 import inspect
+import logging
 from typing import Callable, List, Dict, Any, Union, Optional
 from src.utils.prompts import get_prompt
 from src.services.agents import Tool_Calls, get_func_tool_call
@@ -20,6 +21,8 @@ import re
 
 
 os.environ["NO_PROXY"] = "*"
+
+logger = logging.getLogger(__name__)
 
 
 class LLM:
@@ -136,6 +139,16 @@ class LLM:
         #         }
         #     )
 
+    # DOC-BEGIN id=llm/query_with_tools#2 type=api v=3
+    # summary: 多轮工具调用主循环，接收 system_prompt/prompt/tools 等参数，循环调用 LLM 并执行工具，
+    #   支持 output_interceptor（每 step 文本输出后解析 § 协议）、pre_step_hook（每 step 前注入临时上下文）、
+    #   post_step_hook（对话结束后清理临时上下文）
+    # intent: pre_step_hook/post_step_hook 是 workspace bound 模式的核心机制——
+    #   summary 作为临时消息在每个 step 前注入 tc、step 后删除再重新注入，
+    #   确保 LLM 每一步都能看到最新的项目结构和文件内容。
+    #   三个 hook 都是 Optional[Callable]，不传或传 None 时行为与原来完全一致。
+    #   output_interceptor 解析 § Start/End/Replace 和 § Touch/Write 并同步远程文件。
+    #   pre_step_hook 在 LLM 调用前执行（注入最新 summary），post_step_hook 在循环退出后执行（清理 summary）。
     def query_with_tools(
         self,
         system_prompt: Union[str, Callable[[], str]],
@@ -148,12 +161,18 @@ class LLM:
         stop_condition: Callable[..., bool] = None,
         check_start_prompt: str = None,
         tool_runner: Callable = None,
+        output_interceptor: Callable = None,
+        pre_step_hook: Callable = None,
+        post_step_hook: Callable = None,
     ) -> str:
-        global stop_tasks
-        # sample_size = 5
-        # if verbose:
-        #     print(prompt() if callable(prompt) else prompt)
-        func_dict = {func.__name__: func for func in tools}
+    # DOC-END id=llm/query_with_tools#2
+        # DOC-BEGIN id=llm/query_with_tools/func_dict#1 type=behavior v=1
+        # summary: 从 tools 列表构建 {函数名: 函数对象} 字典，供后续 tool call 分发使用
+        # intent: 必须在循环开始前构建，否则 tool call 处理时 func_dict 未定义导致 NameError。
+        #   与 query_with_tools_by_attention 保持一致的构建方式。
+        func_dict = {func.__name__: func for func in tools} if tools else {}
+        # DOC-END id=llm/query_with_tools/func_dict#1
+
         messages = [
             {"role": "user", "content": prompt}
         ]
@@ -165,10 +184,23 @@ class LLM:
         for step in range(max_steps):
             # resample = False
             print(f"\n=== Prompt step {step+1} ===\n")
+
+            # DOC-BEGIN id=llm/query_with_tools/pre_step_hook#1 type=behavior v=1
+            # summary: 每个 step 开始时调用 pre_step_hook，用于注入最新的 workspace summary 到 tc
+            # intent: pre_step_hook 由 llm_handlers 构造，内部先删除旧 summary 再注入新 summary。
+            #   放在 system_prompt 刷新之前，因为 system_prompt 可能引用 tc 中的内容（如终端快照），
+            #   而 summary 注入到 tc 后 system_prompt 闭包可以感知到最新状态。
+            #   异常被捕获并 warning，不中断主循环。
+            if pre_step_hook is not None:
+                try:
+                    pre_step_hook()
+                except Exception as e:
+                    import traceback as _tb
+                    logger.warning(f"pre_step_hook error: {e}\n{_tb.format_exc()}")
+            # DOC-END id=llm/query_with_tools/pre_step_hook#1
+
             if callable(system_prompt):
                 system_messages[0]["content"] = system_prompt()
-                # if verbose:
-                #     print(prompt())
             text = ""
             if check_start_prompt is None:
                 text, tool_calls, should_stop = self.query_messages_with_tools(
@@ -189,6 +221,19 @@ class LLM:
                         print(f"\nCheck Failed, Generate Again!\n")
 
             all_texts.append(text)
+
+            # DOC-BEGIN id=llm/query_with_tools/call_interceptor#1 type=behavior v=1
+            # summary: 每个 step 的 LLM 文本输出完成后，调用 output_interceptor 回调解析 § 编辑协议
+            # intent: 放在 tool_calls 处理之前、should_stop 检查之前，确保即使用户中途 stop，
+            #   已输出的编辑指令也能被解析执行。interceptor 内部异常被捕获并 warning，不中断主循环。
+            if output_interceptor is not None and text.strip():
+                try:
+                    output_interceptor(text)
+                except Exception as e:
+                    import traceback as _tb
+                    logger.warning(f"output_interceptor error: {e}\n{_tb.format_exc()}")
+            # DOC-END id=llm/query_with_tools/call_interceptor#1
+
             if should_stop:
                 if verbose:
                     print(f"\n=== Stopping at step {step+1} by user ===\n")
@@ -273,6 +318,19 @@ class LLM:
                 if verbose:
                     print(f"\n=== Stopping at step {step+1} ===\n")
                 break
+
+        # DOC-BEGIN id=llm/query_with_tools/post_step_hook#1 type=behavior v=1
+        # summary: 主循环结束后调用 post_step_hook，清理 tc 中残留的 workspace summary 临时消息
+        # intent: 无论是正常结束（stop_condition）还是达到 max_steps，都需要清理 summary，
+        #   避免 summary 残留在 tc 的持久化历史中（summary 是临时的，不应持久存储）。
+        if post_step_hook is not None:
+            try:
+                post_step_hook()
+            except Exception as e:
+                import traceback as _tb
+                logger.warning(f"post_step_hook error: {e}\n{_tb.format_exc()}")
+        # DOC-END id=llm/query_with_tools/post_step_hook#1
+
         return "\n".join(all_texts)
 
     def query_messages(self, messages: str, verbose: bool = True) -> str:

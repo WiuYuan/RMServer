@@ -7,17 +7,19 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+DATA_DIR="$HOME/.rmserver"
+PID_FILE="${DATA_DIR}/server.pid"
+LOG_FILE="${DATA_DIR}/server.log"
+mkdir -p "$DATA_DIR"
 
-PID_FILE="server.pid"
-LOG_FILE="server.log"
 
 if [ -f "$PID_FILE" ]; then
     OLD_PID=$(cat "$PID_FILE")
     if kill -0 "$OLD_PID" 2>/dev/null; then
-        echo "[WARN] Server already running (PID=$OLD_PID), please run rmstop.sh first"
+        echo "[WARN] Server is already running (PID=$OLD_PID), please run stop.sh first"
         exit 1
     else
-        echo "[INFO] Stale PID file found but process is gone, cleaning up"
+        echo "[INFO] Stale PID file found but process is not running, cleaning up"
         rm -f "$PID_FILE"
     fi
 fi

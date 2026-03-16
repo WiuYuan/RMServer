@@ -46,6 +46,7 @@ from src.handlers.article_handlers import (
 from src.handlers.llm_handlers import (
     handle_llm_simple_query, handle_llm_query, handle_task_get_terminal_status,
 )
+from src.services.task_manager import stop_task
 
 from src.handlers.relay_handlers import handle_remote_plan_set, handle_remote_plan_get
 from src.handlers.playbook_handlers import handle_playbook_suggest_next_step
@@ -86,8 +87,20 @@ async def gateway_endpoint(req: ActionRequest):
             return await handle_llm_simple_query(TypeAdapter(LLMRequestData).validate_python(req.data))
         if req.action == "llm_query":
             return await handle_llm_query(TypeAdapter(LLMRequestData).validate_python(req.data))
+        # DOC-BEGIN id=server/llm_stop_task#1 type=api v=1
+        # summary: llm_stop_task 端点——设置 ctrl.stop 信号并通过 asyncio.to_thread 等待 LLM 线程退出，
+        #   返回 finished 标识是否在超时内成功停止
+        # intent: stop_task 内部会 ctrl.done.wait(timeout=15) 阻塞，
+        #   必须用 to_thread 卸载到线程池，否则会冻结 FastAPI 的 async event loop。
+        #   finished=False 表示超时（线程可能卡在长时间 tool call 中），前端仍可认为"已请求停止"。
         if req.action == "llm_stop_task":
-            return {"ok": True}
+            task_id = req.data.get("task_id")
+            if not task_id:
+                return {"ok": False, "error": "task_id required"}
+            import asyncio
+            finished = await asyncio.to_thread(stop_task, task_id)
+            return {"ok": True, "finished": finished}
+        # DOC-END id=server/llm_stop_task#1
         
         # Article Ops
         if req.action == "article_list":
@@ -431,4 +444,4 @@ async def gateway_endpoint(req: ActionRequest):
     raise HTTPException(status_code=400, detail=f"Unknown action: {req.action}")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8888)

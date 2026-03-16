@@ -10,8 +10,9 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-PID_FILE="server.pid"
-SECRET_FILE="$HOME/.rmserver/.env_secret"
+DATA_DIR="$HOME/.rmserver"
+PID_FILE="${DATA_DIR}/server.pid"
+SECRET_FILE="${DATA_DIR}/.env_secret"
 API_BASE="http://127.0.0.1:8000"
 
 # 读取 API Key

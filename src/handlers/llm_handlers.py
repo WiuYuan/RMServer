@@ -82,6 +82,7 @@ async def handle_llm_query(data: LLMRequestData):
     data.task_id = data.task_id or "1"
     ctrl = ensure_task(data.task_id)
     ctrl.stop.clear()
+    ctrl.done.clear()
 
     result_queue = queue.Queue()
     ec = ExternalClient(out_queue=result_queue)
@@ -1214,6 +1215,14 @@ async def handle_llm_query(data: LLMRequestData):
         #   原来直接 run_in_executor(None, fn) 有一个隐患：fn 执行结束后没有人向 result_queue
         #   发送 None，导致 event_generator 永远阻塞在 result_queue.get() 上，SSE 连接无法关闭。
         #   现在用 _run_fn 包装，在 finally 中保证 EOS 一定发送。这是唯一的 EOS 来源。
+        # DOC-BEGIN id=llm_handlers/submit_fn_to_executor#3 type=behavior v=3
+        # summary: 将 query_with_tools 偏函数包装为 _run_fn，提交到线程池执行；
+        #   _run_fn 在 fn 正常或异常结束后都向 result_queue 发送 None（EOS 信号），
+        #   并设置 ctrl.done 通知 stop_task 线程已退出
+        # intent: query_with_tools 内部使用同步 requests 阻塞调用 LLM API，不能在 asyncio 事件循环中直接执行。
+        #   finally 中先 put(None) 关闭 SSE 流，再 set done 通知等待方。
+        #   顺序不能反：如果先 set done，stop_task 返回后前端认为已停止，
+        #   但 SSE 流尚未关闭，可能导致前端状态不一致。
         def _run_fn():
             try:
                 fn()
@@ -1221,7 +1230,9 @@ async def handle_llm_query(data: LLMRequestData):
                 traceback.print_exc()
             finally:
                 result_queue.put(None)
+                ctrl.done.set()
         loop.run_in_executor(None, _run_fn)
+        # DOC-END id=llm_handlers/submit_fn_to_executor#3
         # DOC-END id=llm_handlers/submit_fn_to_executor#2
     except Exception:
         result_queue.put(None)

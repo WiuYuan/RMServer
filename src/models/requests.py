@@ -56,6 +56,13 @@ class PinnedCode(BaseModel):
     filename: str
     content: str
 
+class AvailableLLM(BaseModel):
+    id: str          # 唯一标识，如 "fast" / "powerful"
+    label: str       # 显示名，如 "GPT-4o-mini"
+    model_name: str
+    api_key: str
+    llm_url: Optional[str] = "https://api.deepseek.com/v1/chat/completions"
+
 class LLMRequestData(BaseModel):
     model_name: str
     question: str
@@ -66,6 +73,8 @@ class LLMRequestData(BaseModel):
     enable_fc: Optional[bool] = False
     trim_history: Optional[bool] = False
     pinned_codes: Optional[list[PinnedCode]] = []
+    is_dev_mode: Optional[bool] = False
+    available_llms: Optional[list[AvailableLLM]] = []
 
 class ActionRequest(BaseModel):
     action: str
@@ -81,4 +90,23 @@ class ArticleGenerateBlogReq(BaseModel):
     api_key: str
     llm_url: Optional[str] = None
     style: Optional[Literal["math", "normal", "rigorous"]] = "math"
+
+
+# DOC-BEGIN id=models/requests/tts-req#1 type=design v=1
+# summary: ArticleGenerateTTSReq 包含文章定位(article_id)、LLM配置(model_name/api_key/llm_url)
+#   和Fish Audio配置(fish_api_key/reference_id)；前端必须传入fish_api_key和reference_id
+# intent: TTS生成需要两阶段调用：先调LLM改写文本，再调Fish Audio生成音频；
+#   两个服务使用不同的API key，因此分开传递；reference_id决定说话人声音，
+#   不同用户/场景可能选择不同声音
+class ArticleGenerateTTSReq(BaseModel):
+    article_id: str
+    model_name: str
+    api_key: str
+    llm_url: Optional[str] = "https://api.deepseek.com/v1/chat/completions"
+    fish_api_key: str
+    reference_id: str
+# DOC-END id=models/requests/tts-req#1
+
+class ArticleDeleteTTSReq(BaseModel):
+    article_id: str
 

@@ -25,6 +25,6 @@ if [ -f "$PID_FILE" ]; then
 fi
 
 echo "[INFO] Starting server..."
-nohup python server.py > "$LOG_FILE" 2>&1 &
+nohup uvicorn server:app --host 0.0.0.0 --port 8888 --reload > "$LOG_FILE" 2>&1 &
 echo $! > "$PID_FILE"
 echo "[OK] Server started (PID=$(cat $PID_FILE)), log: $LOG_FILE"

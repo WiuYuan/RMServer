@@ -1,3 +1,4 @@
+# src/utils/article_blog_generator.py
 # ============================================================
 # src/utils/article_blog_generator.py
 # Tree-structured "decompose then backtrack merge" blog generator
@@ -6,9 +7,12 @@
 # ============================================================
 
 import json
+import logging
 import re
 from typing import List, Optional, Literal, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field
 
@@ -50,18 +54,21 @@ class BlogGenConfig(BaseModel):
     max_article_chars: int = 120000
     max_leaf_chars: int = 6000
 
-    max_workers_step2: int = 4
-    max_workers_step3: int = 8
-    max_workers_step4: int = 4
+    max_workers_step2: int = 3
+    max_workers_step3: int = 3
+    max_workers_step4: int = 3
 
 
 # ============================================================
 # Helpers
 # ============================================================
 
+# DOC-BEGIN id=extract_json_array#1 type=function v=2
+# summary: 从LLM原始输出文本中提取JSON数组。依次尝试：(1)直接解析，(2)修复反斜杠后解析，(3)修复未转义双引号后解析，(4)正则逐条提取point字段作为最终兜底。返回List[dict]。
+# intent: LLM输出经常包含非法JSON（未转义的反斜杠、嵌入的双引号、多余文本等），单一修复策略不够健壮。采用多级降级策略确保尽可能解析成功，只有完全无法提取时才抛异常。最后的正则兜底可能丢失point以外的字段，但对当前管线足够。
 def _extract_json_array(text: str) -> List[dict]:
     """
-    Robust JSON array extraction with backslash fix.
+    Robust JSON array extraction with multi-level fallback.
     """
     if not text:
         raise ValueError("Empty LLM output")
@@ -73,24 +80,93 @@ def _extract_json_array(text: str) -> List[dict]:
         raise ValueError(f"No JSON array found in LLM output: {text[:200]}")
 
     sliced = text[start : end + 1]
-    
+
+    # --- Level 1: 直接解析 ---
     try:
         return json.loads(sliced)
     except json.JSONDecodeError:
-        # --- 核心修复代码 ---
-        # 很多 LLM 会返回 "point": "Use \alpha" 这种非法 JSON
-        # 我们寻找反斜杠，如果它后面跟的不是 JSON 标准转义符 (u, n, r, t, b, f, ", /)
-        # 就把它替换为双反斜杠 \\
-        import re
-        # 匹配反斜杠，排除掉它后面跟着合法转义字符的情况
-        fixed = re.sub(r'\\(?![u"bfnrt/])', r'\\\\', sliced)
-        try:
-            return json.loads(fixed)
-        except json.JSONDecodeError as e:
-            # 如果还报错，可能是因为 \ 后面刚好跟着一个 n (比如 \node)，
-            # 这种情况正则很难区分是换行还是公式，只能记录日志并抛出
-            print(f"JSON Parse Error after fix. Original: {sliced}")
-            raise e
+        pass
+
+    # --- Level 2: 修复非法反斜杠 ---
+    # DOC-BEGIN id=extract_json_array/fix_backslash#1 type=behavior v=1
+    # summary: 用正则将不属于JSON标准转义序列的单反斜杠替换为双反斜杠，然后尝试解析
+    # intent: LLM常输出LaTeX公式如 \alpha、\beta，这些在JSON字符串中是非法转义；但需保留合法转义如 \n \t \" 等
+    fixed = re.sub(r'\\(?![u"bfnrt/\\])', r'\\\\', sliced)
+    # DOC-END id=extract_json_array/fix_backslash#1
+    try:
+        return json.loads(fixed)
+    except json.JSONDecodeError:
+        pass
+
+    # --- Level 3: 修复 point 值内部的未转义双引号 ---
+    # DOC-BEGIN id=extract_json_array/fix_inner_quotes#1 type=behavior v=2
+    # summary: 逐字符扫描JSON字符串，识别"point"字段值内部的未转义双引号并替换为中文引号，再尝试解析
+    # intent: LLM经常输出 "point": "xxx "yyy" zzz" 这类嵌套双引号。通过状态机定位字段值的起止位置，
+    #         将内部多余的双引号替换为中文引号（不影响语义），从而修复JSON结构。这比简单正则更可靠。
+    try:
+        fixed2 = _fix_inner_quotes(fixed)
+        return json.loads(fixed2)
+    except (json.JSONDecodeError, Exception):
+        pass
+    # DOC-END id=extract_json_array/fix_inner_quotes#1
+
+    # --- Level 4: 正则兜底提取 ---
+    # DOC-BEGIN id=extract_json_array/regex_fallback#1 type=behavior v=1
+    # summary: 当所有JSON解析手段都失败时，使用正则直接匹配"point"字段的值，构造List[dict]返回
+    # intent: 最终兜底，保证管线不会因单次LLM输出格式错误而完全中断。可能丢失非point字段，但当前管线仅使用point字段。
+    print(f"[WARN] All JSON parse attempts failed, falling back to regex extraction. Raw:\n{sliced[:500]}")
+    pattern = r'"point"\s*:\s*"((?:[^"\\]|\\.)*)"'
+    matches = re.findall(pattern, fixed)
+    if matches:
+        return [{"point": m.replace('\\"', '"')} for m in matches]
+    # DOC-END id=extract_json_array/regex_fallback#1
+
+    raise ValueError(f"Failed to extract any JSON points from LLM output: {sliced[:300]}")
+# DOC-END id=extract_json_array#1
+
+
+# DOC-BEGIN id=fix_inner_quotes#1 type=function v=1
+# summary: 接收一个可能包含嵌套双引号的JSON字符串，定位每个"point": "..."值区间内部的多余双引号，将其替换为中文左/右引号，返回修复后的字符串
+# intent: LLM输出如 {"point": "TGFβ controls "epithelial identity""} 中，内嵌的双引号会破坏JSON结构。
+#         通过查找 "point" 关键字后的冒号和起始引号，然后向前扫描找到真正的结束引号（后面跟 } 或 ,），
+#         将中间所有多余双引号替换。这是启发式方法，对当前简单结构 [{"point":"..."}] 有效。
+def _fix_inner_quotes(s: str) -> str:
+    result = list(s)
+    i = 0
+    while i < len(s):
+        # 查找 "point" 模式
+        idx = s.find('"point"', i)
+        if idx == -1:
+            break
+        # 找到冒号
+        colon = s.find(':', idx + 7)
+        if colon == -1:
+            break
+        # 找到值的起始引号
+        open_q = s.find('"', colon + 1)
+        if open_q == -1:
+            break
+        # 从 open_q+1 开始，找到值的结束引号
+        # 结束引号的特征：后面跟着可选空白 + } 或 ,
+        j = open_q + 1
+        last_quote = -1
+        while j < len(s):
+            if s[j] == '\\':
+                j += 2  # 跳过转义
+                continue
+            if s[j] == '"':
+                # 检查这个引号后面是否是 }, ] 或 ,（可能有空白）
+                rest = s[j+1:].lstrip()
+                if rest and rest[0] in ('}', ',', ']'):
+                    last_quote = j
+                    break
+                else:
+                    # 这是内嵌的双引号，替换为中文引号
+                    result[j] = '\u201c'  # "
+            j += 1
+        i = (last_quote + 1) if last_quote != -1 else (open_q + 1)
+    return ''.join(result)
+# DOC-END id=fix_inner_quotes#1
 
 def _json_array_rule() -> str:
     return (
@@ -162,8 +238,6 @@ def generate_blog_from_article_tree(
     )
 
     llm_main = _new_llm(config)
-    # with open("/home/ubuntu/workspace/test.log", "a", encoding="utf-8") as f:
-    #     print("start", file=f)
 
     # ========================================================
     # Step 1: Article → L1 points
@@ -182,10 +256,11 @@ def generate_blog_from_article_tree(
         + _json_array_rule()
     )
 
+    logger.info(f"[BlogGen][{article_id}] Step 1: Extracting L1 points...")
     raw_l1 = llm_main.query(prompt_l1, False)
-    # with open("/home/ubuntu/workspace/test.log", "a", encoding="utf-8") as f:
-    #     print("Article->L1:"+raw_l1, file=f)
+    logger.info(f"[BlogGen][{article_id}] Step 1: LLM returned {len(raw_l1)} chars")
     l1_items = _extract_json_array(raw_l1)
+    logger.info(f"[BlogGen][{article_id}] Step 1: Got {len(l1_items)} L1 points")
 
     tree = OutlineTree(
         title=article_title,
@@ -195,6 +270,8 @@ def generate_blog_from_article_tree(
     # ========================================================
     # Step 2: L1 → L2 points（parallel）
     # ========================================================
+    logger.info(f"[BlogGen][{article_id}] Step 2: Expanding {len(tree.children)} L1 nodes to L2...")
+
     def expand_l1(idx: int, n1: NodeL1) -> Tuple[int, List[NodeL2]]:
         llm = _new_llm(config)
         prompt = (
@@ -213,8 +290,6 @@ def generate_blog_from_article_tree(
             + _json_array_rule()
         )
         raw = llm.query(prompt, False)
-        # with open("/home/ubuntu/workspace/test.log", "a", encoding="utf-8") as f:
-        #     print("L1->L2:"+raw, file=f)
         arr = _extract_json_array(raw)
         return idx, [NodeL2(point=x["point"]) for x in arr if "point" in x]
 
@@ -223,10 +298,15 @@ def generate_blog_from_article_tree(
         for fut in as_completed(futures):
             i, children = fut.result()
             tree.children[i].children = children
+            logger.info(f"[BlogGen][{article_id}] Step 2: L1[{i}] expanded to {len(children)} L2 nodes")
+
+    logger.info(f"[BlogGen][{article_id}] Step 2: Complete")
 
     # ========================================================
     # Step 3: L2 → detail markdown（parallel）
     # ========================================================
+    total_leaves = sum(len(n1.children) for n1 in tree.children)
+    logger.info(f"[BlogGen][{article_id}] Step 3: Writing detail for {total_leaves} leaf nodes...")
     figs = [x.get("fig") for x in image_catalog if x.get("fig")]
 
     def write_leaf(i, j, n1, n2):
@@ -245,7 +325,7 @@ def generate_blog_from_article_tree(
 
 规则：
 - 图片通过文章中的类似于figure 1B这种, 你就说成[[FIG:1]]中的B图, 任何类似于figure S1B这种在附录中的图片, 你无需引用, 只考虑正文中的图片
-- 图片必须用 [[FIG:x]] 占位, 注意, 任何图片类似于[[FIG:1B]]这种是不能接受的, 必须写成[[FIG:1]], 然后你在引用的时候, 说明是B图
+- 图片必须用 [[FIG:x]] 占位, 注意, 任何图片类似于[[FIG:1B]]这种是不能接受的, 必须写成[[FIG:1]], 然后你在引用的时候, 说明是哪个子图被你引用, 以及这张子图到底讲述了什么东西, 是什么图, 怎么看(什么东西代表什么东西, 如果无法从文章中推断那就算了)等等
 - 定义关键概念，逻辑自洽
 - 使用中文
 - 建议 400–900 字，不超过 {config.max_leaf_chars}
@@ -253,8 +333,6 @@ def generate_blog_from_article_tree(
 请开始：
 """
         md = llm.query(prompt, False)
-        # with open("/home/ubuntu/workspace/test.log", "a", encoding="utf-8") as f:
-        #     print("L2->detail:"+md, file=f)
         return i, j, md
 
     tasks = []
@@ -264,13 +342,19 @@ def generate_blog_from_article_tree(
 
     with ThreadPoolExecutor(max_workers=min(config.max_workers_step3, len(tasks))) as pool:
         futures = [pool.submit(write_leaf, *t) for t in tasks]
+        done_count = 0
         for fut in as_completed(futures):
             i, j, md = fut.result()
             tree.children[i].children[j].detail_markdown = md
+            done_count += 1
+            logger.info(f"[BlogGen][{article_id}] Step 3: Leaf [{i}][{j}] done ({done_count}/{total_leaves})")
+
+    logger.info(f"[BlogGen][{article_id}] Step 3: Complete")
 
     # ========================================================
     # Step 4: Merge L2 → L1 section（parallel）
     # ========================================================
+    logger.info(f"[BlogGen][{article_id}] Step 4: Merging {len(tree.children)} sections...")
     def merge_section(i, n1):
         llm = _new_llm(config)
         pack = [{"point": c.point, "detail": c.detail_markdown} for c in n1.children]
@@ -290,11 +374,9 @@ def generate_blog_from_article_tree(
 - 合并重复内容
 - 使用中文
 - 图片通过文章中的类似于figure 1B这种, 你就说成[[FIG:1]]中的B图, 任何类似于figure S1B这种在附录中的图片, 你无需引用, 只考虑正文中的图片
-- 文章中的需要用图解释的地方, 图片必须用 [[FIG:x]] 占位, 注意, 任何图片类似于[[FIG:1B]]这种是不能接受的, 必须写成[[FIG:1]], 然后你在引用的时候, 说明是B图
+- 文章中的需要用图解释的地方, 图片必须用 [[FIG:x]] 占位, 注意, 任何图片类似于[[FIG:1B]]这种是不能接受的, 必须写成[[FIG:1]], 然后你在引用的时候, 说明是哪个子图被你引用, 以及这张子图到底讲述了什么东西, 是什么图, 怎么看(什么东西代表什么东西, 如果无法从文章中推断那就算了)等等
 """
         llm_raw = llm.query(prompt, False)
-        # with open("/home/ubuntu/workspace/test.log", "a", encoding="utf-8") as f:
-        #     print("detail->L2:"+llm_raw, file=f)
         return i, llm_raw
 
     with ThreadPoolExecutor(max_workers=min(config.max_workers_step4, len(tree.children))) as pool:
@@ -302,10 +384,14 @@ def generate_blog_from_article_tree(
         for fut in as_completed(futures):
             i, sec = fut.result()
             tree.children[i].section_markdown = sec
+            logger.info(f"[BlogGen][{article_id}] Step 4: Section [{i}] merged")
+
+    logger.info(f"[BlogGen][{article_id}] Step 4: Complete")
 
     # ========================================================
     # Step 5: Final merge
     # ========================================================
+    logger.info(f"[BlogGen][{article_id}] Step 5: Final merge...")
     sections = "\n\n---\n\n".join(n.section_markdown or "" for n in tree.children)
 
     prompt_final = f"""
@@ -319,19 +405,18 @@ def generate_blog_from_article_tree(
 
 要求：
 - 标题：# {article_title}
-- 开头 TL;DR (5-8 条)
+- 开头 TL;DR (5-8 条), 注意请详细讲述清楚概念, 一些知识需要详细讲述清楚
 - 图片通过文章中的类似于figure 1B这种, 你就说成[[FIG:1]]中的B图, 任何类似于figure S1B这种在附录中的图片, 你无需引用, 只考虑正文中的图片
-- 文章中的需要用图解释的地方, 必须使用 [[FIG:x]] 占位, 注意, 任何图片类似于[[FIG:1B]]这种是不能接受的, 必须写成[[FIG:1]], 然后你在引用的时候, 说明是B图
+- 文章中的需要用图解释的地方, 必须使用 [[FIG:x]] 占位, 注意, 任何图片类似于[[FIG:1B]]这种是不能接受的, 必须写成[[FIG:1]], 然后你在引用的时候, 说明是哪个子图被你引用, 以及这张子图到底讲述了什么东西, 是什么图, 怎么看(什么东西代表什么东西, 如果无法从文章中推断那就算了)等等
 - 使用中文
-- 讲清楚文章的背景内容, 得到的结论等关键信息
+- 讲清楚文章的背景内容, 基本概念, 得到的结论等关键信息
 - 合并重复内容, 你最后需要给出的是一个讲解清楚的博客, 需要有你自己的逻辑链条
-- 最后给 Figure Index 部分, 每张图必须引用 [[FIG:x]] (这样我才能看得见), 每张图请说明各个子图都是什么意思, 比如A, B, C, ...
-- Figure Index 必须包含所有正文图片解释, 也就是figure 1B, figure 2C这些东西
-- 任何数学公式, **不要使用()或者[], 正确的使用方法是$$, 一个例子是不要(\A_i\), (A_i), 而是$A_i$**
+- 最后给 Figure Index 部分, 每张图必须引用 [[FIG:x]] (这样我才能看得见), 每张图请完整说明所有子图都是什么意思(注意是所有子图都详细说明), 比如A, B, C, ...
+- Figure Index 必须包含所有正文图片解释, 也就是figure 1B, figure 2C这些东西, 且一定注意, 包含所有文章正文图片, 一张也不能少
+- 任何数学公式, **不要使用()或者[], 正确的使用方法是$$, 一个例子是不要(\\A_i\\), (A_i), 而是$A_i$**
 """
     blog_md = llm_main.query(prompt_final, False)
-    # with open("/home/ubuntu/workspace/test.log", "a", encoding="utf-8") as f:
-    #     print("final:"+blog_md, file=f)
+    logger.info(f"[BlogGen][{article_id}] Step 5: Complete, blog length={len(blog_md)} chars")
 
     return {
         "blog_markdown": blog_md,

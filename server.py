@@ -31,6 +31,7 @@ from src.models.requests import (
     ArticleListReq, ArticleGetHtmlReq,
     TaskSelectArticleReq, LLMRequestData, ActionRequest,
     ArticleGenerateBlogReq,
+    ArticleGenerateTTSReq, ArticleDeleteTTSReq,
 )
 from src.config import (
     SECRET_FILE, DATA_DIR, with_default_playbook_root,
@@ -41,6 +42,13 @@ from src.handlers.article_handlers import (
     handle_article_delete_blog, handle_article_extract_images,
     handle_task_select_article,
     handle_article_generate_blog,
+    handle_article_cancel_all_blogs,
+)
+
+from src.handlers.tts_handlers import (
+    handle_tts_generate,
+    handle_tts_delete,
+    handle_tts_cancel_all,
 )
 
 from src.handlers.llm_handlers import (
@@ -50,6 +58,10 @@ from src.services.task_manager import stop_task
 
 from src.handlers.relay_handlers import handle_remote_plan_set, handle_remote_plan_get
 from src.handlers.playbook_handlers import handle_playbook_suggest_next_step
+from src.handlers.think_relay_handlers import (
+    handle_think_relay_set, handle_think_relay_get,
+    ThinkRelaySetReq, ThinkRelayGetReq,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -160,6 +172,9 @@ async def gateway_endpoint(req: ActionRequest):
             }])
             return {"ok": True}
         
+        if req.action == "article_cancel_all_blogs":
+            return await handle_article_cancel_all_blogs()
+
         if req.action == "article_generate_blog":
             return await handle_article_generate_blog(
                 TypeAdapter(ArticleGenerateBlogReq).validate_python(req.data)
@@ -169,6 +184,20 @@ async def gateway_endpoint(req: ActionRequest):
             return await handle_article_delete_blog(
                 TypeAdapter(ArticleDeleteBlogReq).validate_python(req.data)
             )
+
+        # === TTS Operations ===
+        if req.action == "tts_generate":
+            return await handle_tts_generate(
+                TypeAdapter(ArticleGenerateTTSReq).validate_python(req.data)
+            )
+
+        if req.action == "tts_delete":
+            return await handle_tts_delete(
+                TypeAdapter(ArticleDeleteTTSReq).validate_python(req.data).article_id
+            )
+
+        if req.action == "tts_cancel_all":
+            return await handle_tts_cancel_all()
 
         # === Global Terminal Operations ===
         # DOC-BEGIN id=server/terminal-global-ops#1 type=api v=2
@@ -368,6 +397,15 @@ async def gateway_endpoint(req: ActionRequest):
             return await handle_remote_plan_get(
                 TypeAdapter(RemotePlanGetReq).validate_python(req.data)
             )
+
+        if req.action == "think_relay_set":
+            return await handle_think_relay_set(
+                TypeAdapter(ThinkRelaySetReq).validate_python(req.data)
+            )
+        if req.action == "think_relay_get":
+            return await handle_think_relay_get(
+                TypeAdapter(ThinkRelayGetReq).validate_python(req.data)
+            )
             
             
             
@@ -435,6 +473,31 @@ async def gateway_endpoint(req: ActionRequest):
             tc.inject_pinned_content(hash_val, filename, content)
             
             return {"ok": True}
+
+        # DOC-BEGIN id=server/task_add_article_context#1 type=api v=1
+        # summary: task_add_article_context 端点——接收 task_id 和前端已渲染的文章纯文字 content，
+        #   将其作为一条 role="user" 的历史消息追加到该 task 的对话历史中，不调用 LLM，直接返回 ok
+        # intent: 让用户可以把当前正在阅读的 blog/article 全文一键存入 LLM 上下文，
+        #   下次对话时 LLM 自动感知文章内容。content 由前端提取（blog 取 markdown，
+        #   article 取 HTML 去标签后的纯文字），后端不做二次处理，直接存储。
+        #   不调用 LLM 是核心约束——此操作只是往历史追加一条消息，cost 为零。
+        if req.action == "task_add_article_context":
+            task_id = req.data.get("task_id")
+            content = req.data.get("content", "").strip()
+            title = req.data.get("title", "")
+            if not task_id:
+                return {"ok": False, "detail": "task_id is required"}
+            if not content:
+                return {"ok": False, "detail": "content is empty"}
+            task_dir = f"{DATA_DIR}/tasks/{task_id}"
+            tc = Tool_Calls(LOG_DIR=task_dir, MAX_CHAR=800000, mode="Summary")
+            label = f'[Article Context: {title}]\n' if title else "[Article Context]\n"
+            tc.extend([{
+                "role": "user",
+                "content": label + content,
+            }])
+            return {"ok": True}
+        # DOC-END id=server/task_add_article_context#1
 
         
     except Exception as e:

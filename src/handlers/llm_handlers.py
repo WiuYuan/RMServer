@@ -1002,7 +1002,8 @@ async def handle_llm_query(data: LLMRequestData):
                 "\n"
                 "def mul(a, b):\n"
                 "    return a * b\n"
-                "```\n"
+                "```\n\n\n"
+                "Notice previous patch may be replaced by '[EDIT_PROTOCOL_TRIMMED]' (in order to save context), and previous patch may fail or success.\n"
                 "6. My project code is NOT available online or in any public repository. "
                 "If you need to see any source code (e.g. src/services/xxx.py), "
                 "do NOT guess or fabricate it — ask me directly and I will pin it for you."
@@ -1189,7 +1190,51 @@ async def handle_llm_query(data: LLMRequestData):
                 f"The user is reviewing this. DO NOT suggest new destructive commands until this is processed.\n"
             )
             
-        return "\n".join(base_rules) + "\n" + terminal_context_block + "\n" + code_edit_protocol + "\n" + non_workspace_hint + "\n" + pending_context
+        # DOC-BEGIN id=llm_handlers/system_prompt/dev_run_protocol#1 type=behavior v=1
+        # summary: is_dev_mode=True 时，注入 DevRun 协议说明及可用 LLM 列表到 system_prompt；
+        #   available_llms 由前端附赠（仅含 id+label+model_name，不含 key），
+        #   LLM 在回答中可生成 § DevRun 块供前端渲染为可点击的测试按钮
+        # intent: DevRun 块让 LLM 在开发模式下主动生成可执行的 gateway 请求，
+        #   前端解析后填充 api_key 等敏感字段（LLM 输出中不含 key，安全），
+        #   并在 overlay 中展示运行结果。key 不出现在 LLM 输出中是安全边界的核心约束。
+        dev_run_protocol = ""
+        if data.is_dev_mode:
+            llm_list_lines = []
+            for llm_item in (data.available_llms or []):
+                llm_list_lines.append(f"  - id: \"{llm_item.id}\"  label: \"{llm_item.label}\"  model: \"{llm_item.model_name}\"")
+            llm_list_str = "\n".join(llm_list_lines) if llm_list_lines else "  (none provided)"
+
+            dev_run_protocol = (
+                "\n=== DEV MODE: DevRun PROTOCOL ===\n"
+                "You are in DEVELOPER MODE. When you suggest calling a backend gateway action "
+                "(e.g. to test a new feature), you MAY generate a § DevRun block.\n"
+                "The frontend will render it as a clickable 'Run' button. "
+                "Clicking it opens an overlay showing the gateway response.\n\n"
+                "FORMAT:\n\n"
+                "§ DevRun\n"
+                "```json\n"
+                "{\n"
+                "  \"action\": \"<gateway_action_name>\",\n"
+                "  \"llm_id\": \"<one of the available LLM ids below, or omit if not needed>\",\n"
+                "  \"data\": {\n"
+                "    <key>: <value>,\n"
+                "    \"__note__\": \"Fields like api_key/task_id will be auto-filled by the frontend\"\n"
+                "  }\n"
+                "}\n"
+                "```\n"
+                "§ DevRun\n\n"
+                "RULES:\n"
+                "- Do NOT include api_key, server_api_key, task_id in the data block — the frontend fills these automatically.\n"
+                "- Use llm_id to reference which LLM should handle this request (frontend resolves to model_name/api_key/llm_url).\n"
+                "- Omit llm_id if the action does not require an LLM call.\n"
+                "- Only generate § DevRun when it is genuinely useful for testing the feature being discussed.\n"
+                "- You may include a brief explanation before the block describing what it tests.\n\n"
+                f"AVAILABLE LLMs (use the id field):\n{llm_list_str}\n"
+                "=================================\n"
+            )
+        # DOC-END id=llm_handlers/system_prompt/dev_run_protocol#1
+
+        return "\n".join(base_rules) + "\n" + terminal_context_block + "\n" + code_edit_protocol + "\n" + non_workspace_hint + "\n" + pending_context + dev_run_protocol
 
     try:
         llm = LLM(api_key=data.api_key, llm_url=data.llm_url, model_name=data.model_name, format="openai", ec=ec)

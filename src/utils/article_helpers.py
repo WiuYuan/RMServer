@@ -1,3 +1,4 @@
+# src/utils/article_helpers.py
 import os
 import re
 from typing import Dict, Any, Optional, Tuple
@@ -5,8 +6,7 @@ from fastapi import HTTPException
 import trafilatura
 from bs4 import BeautifulSoup
 from src.utils.file_utils import ensure_dir
-
-ARTICLES_ROOT = "/home/ubuntu/workspace/data/articles"
+from src.config import ARTICLES_ROOT
 
 def resolve_article_abs_path(article_id: str) -> str:
     """
@@ -53,11 +53,50 @@ def build_articles_tree(root_dir: str = ARTICLES_ROOT) -> Dict[str, Any]:
                 node["children"].append(walk(abs_p, rel_p))
             else:
                 if ent.lower().endswith(".html"):
+                    # DOC-BEGIN id=helpers/articles/tree-blog-status#1 type=behavior v=1
+                    # summary: 根据 .html 同名的 .txt/.lock/.queued/.error 文件是否存在，
+                    #   计算该文章的 blog_status 并附加到 file 节点上；
+                    #   优先级：txt(completed) > lock(running) > queued(queued) > error(failed) > none
+                    # intent: 前端 fetchArticles 遍历 tree 初始化 blogStatuses Map，
+                    #   如果后端不在 tree 中返回 blog_status，刷新页面后所有按钮都显示蓝色（未生成），
+                    #   与实际状态不符；检查顺序按状态优先级排列，completed 最优先，
+                    #   因为 .lock 可能因进程崩溃残留但 .txt 已写入
+                    base_no_ext = os.path.splitext(abs_p)[0]
+                    if os.path.exists(base_no_ext + ".txt"):
+                        blog_status = "completed"
+                    elif os.path.exists(base_no_ext + ".lock"):
+                        blog_status = "running"
+                    elif os.path.exists(base_no_ext + ".queued"):
+                        blog_status = "queued"
+                    elif os.path.exists(base_no_ext + ".error"):
+                        blog_status = "failed"
+                    else:
+                        blog_status = "none"
+                    # DOC-END id=helpers/articles/tree-blog-status#1
+
+                    # DOC-BEGIN id=helpers/articles/tree-tts-status#1 type=behavior v=1
+                    # summary: 检查TTS状态文件(.tts.mp3/.tts.lock/.tts.queued/.tts.error)，
+                    #   计算tts_status并附加到file节点，逻辑与blog_status完全对称
+                    # intent: 前端需要在文章列表中展示TTS生成状态，与blog状态独立显示
+                    if os.path.exists(base_no_ext + ".tts.mp3"):
+                        tts_status = "completed"
+                    elif os.path.exists(base_no_ext + ".tts.lock"):
+                        tts_status = "running"
+                    elif os.path.exists(base_no_ext + ".tts.queued"):
+                        tts_status = "queued"
+                    elif os.path.exists(base_no_ext + ".tts.error"):
+                        tts_status = "failed"
+                    else:
+                        tts_status = "none"
+                    # DOC-END id=helpers/articles/tree-tts-status#1
+
                     node["children"].append({
                         "type": "file",
                         "name": ent,
-                        "article_id": rel_p.replace("\\", "/"),  # 统一成 url 风格
+                        "article_id": rel_p.replace("\\", "/"),
                         "title": ent[:-5],
+                        "blog_status": blog_status,
+                        "tts_status": tts_status,
                     })
         return node
 
@@ -176,3 +215,7 @@ def article_lock_path(article_abs_path: str) -> str:
 def article_error_path(article_abs_path: str) -> str:
     base, _ = os.path.splitext(article_abs_path)
     return base + ".error"
+
+def article_queued_path(article_abs_path: str) -> str:
+    base, _ = os.path.splitext(article_abs_path)
+    return base + ".queued"

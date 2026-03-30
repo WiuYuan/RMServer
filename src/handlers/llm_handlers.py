@@ -1176,65 +1176,59 @@ async def handle_llm_query(data: LLMRequestData):
 
         if data.system_prompt_mode in ["concise"]:
             base_rules.append("5. Be concise.")
-            
-        # 获取挂起状态并注入 System Prompt
-        pending = history_manager.get_pending_command(data.task_id)
-        pending_context = ""
-        if pending:
-            pending_context = (
-                f"\n[!!! PENDING APPROVAL !!!]\n"
-                f"There is a command waiting for user execution:\n"
-                f"Session: {pending['session_id']}\n"
-                f"Command: {pending['command']}\n"
-                f"Reason: {pending['reason']}\n"
-                f"The user is reviewing this. DO NOT suggest new destructive commands until this is processed.\n"
-            )
-            
-        # DOC-BEGIN id=llm_handlers/system_prompt/dev_run_protocol#1 type=behavior v=1
-        # summary: is_dev_mode=True 时，注入 DevRun 协议说明及可用 LLM 列表到 system_prompt；
-        #   available_llms 由前端附赠（仅含 id+label+model_name，不含 key），
-        #   LLM 在回答中可生成 § DevRun 块供前端渲染为可点击的测试按钮
-        # intent: DevRun 块让 LLM 在开发模式下主动生成可执行的 gateway 请求，
-        #   前端解析后填充 api_key 等敏感字段（LLM 输出中不含 key，安全），
-        #   并在 overlay 中展示运行结果。key 不出现在 LLM 输出中是安全边界的核心约束。
-        dev_run_protocol = ""
-        if data.is_dev_mode:
-            llm_list_lines = []
-            for llm_item in (data.available_llms or []):
-                llm_list_lines.append(f"  - id: \"{llm_item.id}\"  label: \"{llm_item.label}\"  model: \"{llm_item.model_name}\"")
-            llm_list_str = "\n".join(llm_list_lines) if llm_list_lines else "  (none provided)"
 
-            dev_run_protocol = (
-                "\n=== DEV MODE: DevRun PROTOCOL ===\n"
-                "You are in DEVELOPER MODE. When you suggest calling a backend gateway action "
-                "(e.g. to test a new feature), you MAY generate a § DevRun block.\n"
-                "The frontend will render it as a clickable 'Run' button. "
-                "Clicking it opens an overlay showing the gateway response.\n\n"
-                "FORMAT:\n\n"
-                "§ DevRun\n"
-                "```json\n"
-                "{\n"
-                "  \"action\": \"<gateway_action_name>\",\n"
-                "  \"llm_id\": \"<one of the available LLM ids below, or omit if not needed>\",\n"
-                "  \"data\": {\n"
-                "    <key>: <value>,\n"
-                "    \"__note__\": \"Fields like api_key/task_id will be auto-filled by the frontend\"\n"
-                "  }\n"
-                "}\n"
+        # DOC-BEGIN id=llm_handlers/system_prompt/script_protocol#1 type=behavior v=1
+        # summary: 当存在可见终端时，构造 § Script 协议说明并获取可用终端的 session_id 列表
+        # intent: 让 LLM 知道如何输出 § Script 块——用逗号分隔的 session_id 列表 + bash 代码块。
+        #   session_id_list 包含所有可见终端的 ID，LLM 在 § Script 开头引用这些 ID。
+        #   空行分隔的子段落会被前端拆分为可独立执行的命令块。
+        #   script_protocol 仅在 has_visible_terminal 时非空，否则 return 语句拼接时跳过。
+        script_protocol = ""
+        if has_visible_terminal:
+            visible_sids = [
+                sid for sid in active_sessions
+                if not history_manager.is_terminal_bound(sid)
+            ]
+            session_id_list = ", ".join(visible_sids)
+            script_protocol = (
+                "\n=== TERMINAL SCRIPT EXECUTION PROTOCOL ===\n"
+                "When you need to run terminal commands, use the § Script block.\n"
+                "Format:\n\n"
+                "§ Script (session_id, your_script_id)\n"
+                "```bash\n"
+                "# Navigate to project and list files\n"
+                "cd /home/user/project\n"
+                "ls -la\n"
+                "\n"
+                "# Check git status and diff overview\n"
+                "git status\n"
+                "git diff --stat\n"
+                "\n"
+                "# Show first 20 lines of README\n"
+                "cat README.md | head -20\n"
                 "```\n"
-                "§ DevRun\n\n"
-                "RULES:\n"
-                "- Do NOT include api_key, server_api_key, task_id in the data block — the frontend fills these automatically.\n"
-                "- Use llm_id to reference which LLM should handle this request (frontend resolves to model_name/api_key/llm_url).\n"
-                "- Omit llm_id if the action does not require an LLM call.\n"
-                "- Only generate § DevRun when it is genuinely useful for testing the feature being discussed.\n"
-                "- You may include a brief explanation before the block describing what it tests.\n\n"
-                f"AVAILABLE LLMs (use the id field):\n{llm_list_str}\n"
+                "§ Script (session_id, your_script_id)\n\n"
+                "Rules:\n"
+                "- session_id: the terminal session ID to execute in\n"
+                "- your_script_id: generate a unique ID for this script block (e.g. 'deploy_v1', 'check_env')\n"
+                "- Comments (lines starting with #) are part of the same block and help the user understand the purpose\n"
+                "- Blank lines separate independently executable sub-blocks\n"
+                "- Within a single block, do NOT use empty lines (blank lines are the ONLY delimiter between blocks)\n"
+                "- Each sub-block can be run separately in the terminal\n"
+                "- The user can choose to run each block in any available terminal\n\n"
+                f"Available terminal session IDs: {session_id_list}\n"
                 "=================================\n"
             )
-        # DOC-END id=llm_handlers/system_prompt/dev_run_protocol#1
 
-        return "\n".join(base_rules) + "\n" + terminal_context_block + "\n" + code_edit_protocol + "\n" + non_workspace_hint + "\n" + pending_context + dev_run_protocol
+        # DOC-BEGIN id=llm_handlers/system_prompt/return_concat#1 type=behavior v=1
+        # summary: 拼接 system_prompt 最终返回值，pending_context 和 dev_run_protocol 作为可选段落（未定义时为空字符串）
+        # intent: pending_context/dev_run_protocol 是预留给上下文挂载和开发运行协议的占位变量。
+        #   当它们未被定义时，使用 locals().get() 获取默认空字符串，避免 NameError。
+        #   script_protocol 有显式初始化（"" 或协议文本），无需额外处理。
+        pending_ctx = locals().get("pending_context", "")
+        dev_run = locals().get("dev_run_protocol", "")
+        return "\n".join(base_rules) + "\n" + terminal_context_block + "\n" + code_edit_protocol + "\n" + non_workspace_hint + "\n" + pending_ctx + dev_run + script_protocol
+        # DOC-END id=llm_handlers/system_prompt/return_concat#1
 
     try:
         llm = LLM(api_key=data.api_key, llm_url=data.llm_url, model_name=data.model_name, format="openai", ec=ec)

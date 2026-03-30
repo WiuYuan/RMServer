@@ -219,6 +219,15 @@ def _build_full_context(title, text, images, max_chars) -> str:
 # Core pipeline
 # ============================================================
 
+# DOC-BEGIN id=generate_blog_from_article_tree#3 type=function v=3
+# summary: 博客生成主函数，接收文章标题、原文、图片目录和可选的images_b64（多模态图片）。
+#   有图片时使用query_multimodal将图片+文本一次性发送给多模态LLM；
+#   无图片时回退到纯文本query。每一步都有logger.info输出到主线程。
+#   返回 {"blog_markdown", "used_figs", "tree"} 格式统一。
+# intent: 多模态方案让LLM直接"看"文章图片（figure+table png），而非依赖文字描述猜测图片内容；
+#   PDF路径：extract_images_from_adobe_zip返回figure png + table png + 正文text；
+#   HTML路径：extract_images返回base64图片（可能需要缩放）+ 空text（用cleaned_text兜底）。
+#   所有logger.info输出到python -m server的终端，便于实时排查。
 def generate_blog_from_article_tree(
     *,
     task_id: str,
@@ -227,8 +236,18 @@ def generate_blog_from_article_tree(
     article_text: str,
     image_catalog: List[dict],
     config: BlogGenConfig,
+    images_b64: Optional[List[str]] = None,
     tc: Optional[Tool_Calls] = None,
 ) -> dict:
+
+    llm_main = _new_llm(config)
+    image_count = len(images_b64) if images_b64 else 0
+
+    logger.info(f"[BlogGen][{article_id}] === Starting blog generation ===")
+    logger.info(f"[BlogGen][{article_id}] Article title: {article_title}")
+    logger.info(f"[BlogGen][{article_id}] Text length: {len(article_text)} chars")
+    logger.info(f"[BlogGen][{article_id}] Image count: {image_count}")
+    logger.info(f"[BlogGen][{article_id}] Model: {config.model_name}")
 
     full_context = _build_full_context(
         article_title,
@@ -237,189 +256,80 @@ def generate_blog_from_article_tree(
         config.max_article_chars,
     )
 
-    llm_main = _new_llm(config)
-
-    # ========================================================
-    # Step 1: Article → L1 points
-    # ========================================================
-    prompt_l1 = (
-        full_context
-        + f"""
-任务：
-- 从全文中提取 {config.l1_points} 个左右的「一级要点」
-- 每个 point 是一句完整、可作为章节标题的陈述
-- 可以从背景, 文章得出的结论等信息出发
-- 不要编号，不要解释
-
-风格：{_style_rules(config.style)}
-"""
-        + _json_array_rule()
-    )
-
-    logger.info(f"[BlogGen][{article_id}] Step 1: Extracting L1 points...")
-    raw_l1 = llm_main.query(prompt_l1, False)
-    logger.info(f"[BlogGen][{article_id}] Step 1: LLM returned {len(raw_l1)} chars")
-    l1_items = _extract_json_array(raw_l1)
-    logger.info(f"[BlogGen][{article_id}] Step 1: Got {len(l1_items)} L1 points")
-
-    tree = OutlineTree(
-        title=article_title,
-        children=[NodeL1(point=x["point"]) for x in l1_items if "point" in x]
-    )
-
-    # ========================================================
-    # Step 2: L1 → L2 points（parallel）
-    # ========================================================
-    logger.info(f"[BlogGen][{article_id}] Step 2: Expanding {len(tree.children)} L1 nodes to L2...")
-
-    def expand_l1(idx: int, n1: NodeL1) -> Tuple[int, List[NodeL2]]:
-        llm = _new_llm(config)
-        prompt = (
-            full_context
-            + f"""
-当前一级要点：
-{n1.point}
-
-任务：
-- 为该要点生成 {config.l2_points} 个「二级子点」
-- 每个 point 应当是可独立展开的论点
-- 不要写解释
-
-风格：{_style_rules(config.style)}
-"""
-            + _json_array_rule()
-        )
-        raw = llm.query(prompt, False)
-        arr = _extract_json_array(raw)
-        return idx, [NodeL2(point=x["point"]) for x in arr if "point" in x]
-
-    with ThreadPoolExecutor(max_workers=min(config.max_workers_step2, len(tree.children))) as pool:
-        futures = [pool.submit(expand_l1, i, n1) for i, n1 in enumerate(tree.children)]
-        for fut in as_completed(futures):
-            i, children = fut.result()
-            tree.children[i].children = children
-            logger.info(f"[BlogGen][{article_id}] Step 2: L1[{i}] expanded to {len(children)} L2 nodes")
-
-    logger.info(f"[BlogGen][{article_id}] Step 2: Complete")
-
-    # ========================================================
-    # Step 3: L2 → detail markdown（parallel）
-    # ========================================================
-    total_leaves = sum(len(n1.children) for n1 in tree.children)
-    logger.info(f"[BlogGen][{article_id}] Step 3: Writing detail for {total_leaves} leaf nodes...")
-    figs = [x.get("fig") for x in image_catalog if x.get("fig")]
-
-    def write_leaf(i, j, n1, n2):
-        llm = _new_llm(config)
+    # DOC-BEGIN id=generate_blog_from_article_tree/prompt#1 type=behavior v=2
+    # summary: 博客生成提示词，同时适用于多模态和纯文本两种模式。
+    #   多模态模式下图片会随提示词一起发送，LLM可直接观看图片内容；
+    #   纯文本模式下LLM只能依赖文字描述。
+    #   图片索引从1开始对应images_b64列表顺序（也对应extract_images中的index）。
+    # intent: 提示词统一，区别仅在于是否有图片输入；
+    #   要求LLM用[[FIG:x]]占位引用图片，便于前端替换为实际图片；
+    #   强调数学公式用$$而非()，避免渲染问题。
+    if image_count > 0:
         prompt = f"""
-全文上下文：
-{full_context}
+文章标题：{article_title}
 
-你将围绕以下「二级子点」写一段详细解释（Markdown）。
+文章正文：
+{article_text[:config.max_article_chars]}
 
-一级要点：
-{n1.point}
+以下是文章中的所有图片（共{image_count}张，包括Figure和Table的截图），请仔细观看每张图片的内容。
 
-二级子点：
-{n2.point}
-
-规则：
-- 图片通过文章中的类似于figure 1B这种, 你就说成[[FIG:1]]中的B图, 任何类似于figure S1B这种在附录中的图片, 你无需引用, 只考虑正文中的图片
-- 图片必须用 [[FIG:x]] 占位, 注意, 任何图片类似于[[FIG:1B]]这种是不能接受的, 必须写成[[FIG:1]], 然后你在引用的时候, 说明是哪个子图被你引用, 以及这张子图到底讲述了什么东西, 是什么图, 怎么看(什么东西代表什么东西, 如果无法从文章中推断那就算了)等等
-- 定义关键概念，逻辑自洽
-- 使用中文
-- 建议 400–900 字，不超过 {config.max_leaf_chars}
-
-请开始：
-"""
-        md = llm.query(prompt, False)
-        return i, j, md
-
-    tasks = []
-    for i, n1 in enumerate(tree.children):
-        for j, n2 in enumerate(n1.children):
-            tasks.append((i, j, n1, n2))
-
-    with ThreadPoolExecutor(max_workers=min(config.max_workers_step3, len(tasks))) as pool:
-        futures = [pool.submit(write_leaf, *t) for t in tasks]
-        done_count = 0
-        for fut in as_completed(futures):
-            i, j, md = fut.result()
-            tree.children[i].children[j].detail_markdown = md
-            done_count += 1
-            logger.info(f"[BlogGen][{article_id}] Step 3: Leaf [{i}][{j}] done ({done_count}/{total_leaves})")
-
-    logger.info(f"[BlogGen][{article_id}] Step 3: Complete")
-
-    # ========================================================
-    # Step 4: Merge L2 → L1 section（parallel）
-    # ========================================================
-    logger.info(f"[BlogGen][{article_id}] Step 4: Merging {len(tree.children)} sections...")
-    def merge_section(i, n1):
-        llm = _new_llm(config)
-        pack = [{"point": c.point, "detail": c.detail_markdown} for c in n1.children]
-        prompt = f"""
-全文上下文：
-{full_context}
-
-你将把多个子点解释整合为一个章节（Markdown）。
-
-章节标题：
-## {n1.point}
-
-子点材料：
-{json.dumps(pack, ensure_ascii=False)}
-
-规则：
-- 合并重复内容
-- 使用中文
-- 图片通过文章中的类似于figure 1B这种, 你就说成[[FIG:1]]中的B图, 任何类似于figure S1B这种在附录中的图片, 你无需引用, 只考虑正文中的图片
-- 文章中的需要用图解释的地方, 图片必须用 [[FIG:x]] 占位, 注意, 任何图片类似于[[FIG:1B]]这种是不能接受的, 必须写成[[FIG:1]], 然后你在引用的时候, 说明是哪个子图被你引用, 以及这张子图到底讲述了什么东西, 是什么图, 怎么看(什么东西代表什么东西, 如果无法从文章中推断那就算了)等等
-"""
-        llm_raw = llm.query(prompt, False)
-        return i, llm_raw
-
-    with ThreadPoolExecutor(max_workers=min(config.max_workers_step4, len(tree.children))) as pool:
-        futures = [pool.submit(merge_section, i, n1) for i, n1 in enumerate(tree.children)]
-        for fut in as_completed(futures):
-            i, sec = fut.result()
-            tree.children[i].section_markdown = sec
-            logger.info(f"[BlogGen][{article_id}] Step 4: Section [{i}] merged")
-
-    logger.info(f"[BlogGen][{article_id}] Step 4: Complete")
-
-    # ========================================================
-    # Step 5: Final merge
-    # ========================================================
-    logger.info(f"[BlogGen][{article_id}] Step 5: Final merge...")
-    sections = "\n\n---\n\n".join(n.section_markdown or "" for n in tree.children)
-
-    prompt_final = f"""
-全文上下文：
-{full_context}
-
-章节内容：
-{sections}
-
-请将以下章节整合为一篇完整博客(Markdown)
+请根据文章正文和图片内容，写一篇完整的中文博客(Markdown)。
 
 要求：
 - 标题：# {article_title}
-- 开头 TL;DR (5-8 条), 注意请详细讲述清楚概念, 一些知识需要详细讲述清楚
-- 图片通过文章中的类似于figure 1B这种, 你就说成[[FIG:1]]中的B图, 任何类似于figure S1B这种在附录中的图片, 你无需引用, 只考虑正文中的图片
-- 文章中的需要用图解释的地方, 必须使用 [[FIG:x]] 占位, 注意, 任何图片类似于[[FIG:1B]]这种是不能接受的, 必须写成[[FIG:1]], 然后你在引用的时候, 说明是哪个子图被你引用, 以及这张子图到底讲述了什么东西, 是什么图, 怎么看(什么东西代表什么东西, 如果无法从文章中推断那就算了)等等
+- 开头 TL;DR (5-8 条)，详细讲述清楚概念
+- 当文中需要引用图片时，使用 [[FIG:x]] 占位（x从1开始，对应你看到的图片顺序）
+- 对每张图片的子图（如A、B、C）都需要详细说明含义（哪条线代表什么、横纵坐标是什么等）
 - 使用中文
-- 讲清楚文章的背景内容, 基本概念, 得到的结论等关键信息
-- 合并重复内容, 你最后需要给出的是一个讲解清楚的博客, 需要有你自己的逻辑链条
-- 最后给 Figure Index 部分, 每张图必须引用 [[FIG:x]] (这样我才能看得见), 每张图请完整说明所有子图都是什么意思(注意是所有子图都详细说明), 比如A, B, C, ...
-- Figure Index 必须包含所有正文图片解释, 也就是figure 1B, figure 2C这些东西, 且一定注意, 包含所有文章正文图片, 一张也不能少
-- 任何数学公式, **不要使用()或者[], 正确的使用方法是$$, 一个例子是不要(\\A_i\\), (A_i), 而是$A_i$**
+- 讲清楚文章的背景、基本概念、结论等关键信息
+- 合并重复内容，给出有逻辑链条的讲解
+- 最后必须有 Figure Index 部分，每张图用 [[FIG:x]] 引用，详细说明所有子图含义
+- 包含所有图片，一张也不能少
+- 数学公式用 $...$ 或 $$...$$，不要用 () 或 []
 """
-    blog_md = llm_main.query(prompt_final, False)
-    logger.info(f"[BlogGen][{article_id}] Step 5: Complete, blog length={len(blog_md)} chars")
+    else:
+        prompt = f"""
+文章标题：{article_title}
+
+文章正文：
+{article_text[:config.max_article_chars]}
+
+请根据上述文章直接写一篇完整的中文博客(Markdown)。
+
+要求：
+- 标题：# {article_title}
+- 开头 TL;DR (5-8 条)，详细讲述清楚概念
+- 文章中的图片引用使用 [[FIG:x]] 占位
+- 使用中文
+- 讲清楚文章的背景、基本概念、结论等关键信息
+- 合并重复内容，给出有逻辑链条的讲解
+- 最后给 Figure Index 部分，每张图用 [[FIG:x]] 引用
+- 数学公式用 $...$ 或 $$...$$，不要用 () 或 []
+"""
+    # DOC-END id=generate_blog_from_article_tree/prompt#1
+
+    # DOC-BEGIN id=generate_blog_from_article_tree/llm_call#1 type=behavior v=2
+    # summary: 根据是否有图片选择调用方式：有images_b64时用query_multimodal发送图片+文本，
+    #   无图片时用query纯文本。两种方式都等待完成后返回完整文本。
+    # intent: query_multimodal是非流式的（stream=False），会阻塞直到完整响应返回；
+    #   query是流式的（stream=True），边生成边输出。多模态API通常不支持流式。
+    if image_count > 0:
+        logger.info(f"[BlogGen][{article_id}] Calling multimodal LLM with {image_count} images...")
+        blog_md = llm_main.query_multimodal(prompt, images_b64, verbose=True)
+        logger.info(f"[BlogGen][{article_id}] Multimodal LLM response length: {len(blog_md)} chars")
+    else:
+        logger.info(f"[BlogGen][{article_id}] Calling text-only LLM (no images)...")
+        blog_md = llm_main.query(prompt, verbose=True)
+        logger.info(f"[BlogGen][{article_id}] Text LLM response length: {len(blog_md)} chars")
+    # DOC-END id=generate_blog_from_article_tree/llm_call#1
+
+    used_figs = sorted(set(_extract_fig_placeholders(blog_md)))
+    logger.info(f"[BlogGen][{article_id}] === Blog generation complete ===")
+    logger.info(f"[BlogGen][{article_id}] Blog length: {len(blog_md)} chars, figures used: {used_figs}")
 
     return {
         "blog_markdown": blog_md,
-        "used_figs": sorted(set(_extract_fig_placeholders(blog_md))),
-        "tree": tree.model_dump(),
+        "used_figs": used_figs,
+        "tree": None,
     }
+# DOC-END id=generate_blog_from_article_tree#3

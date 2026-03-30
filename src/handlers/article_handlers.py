@@ -30,8 +30,30 @@ from src.utils.article_blog_generator import generate_blog_from_article_tree, Bl
 from src.services.blog_job_queue import BLOG_JOB_QUEUE
 from bs4 import BeautifulSoup
 import glob
+import zipfile
+import re
+import tempfile
+import io
+from adobe.pdfservices.operation.auth.service_principal_credentials import ServicePrincipalCredentials
+from adobe.pdfservices.operation.pdf_services import PDFServices
+from adobe.pdfservices.operation.pdf_services_media_type import PDFServicesMediaType
+from adobe.pdfservices.operation.pdfjobs.jobs.extract_pdf_job import ExtractPDFJob
+from adobe.pdfservices.operation.pdfjobs.result.extract_pdf_result import ExtractPDFResult
+from adobe.pdfservices.operation.pdfjobs.params.extract_pdf.extract_element_type import ExtractElementType
+from adobe.pdfservices.operation.pdfjobs.params.extract_pdf.extract_pdf_params import ExtractPDFParams
+# DOC-BEGIN id=handlers/articles/adobe-imports#1 type=dependency v=1
+# summary: 导入Adobe PDF Services SDK依赖和图片处理库，用于PDF图片提取功能
+# intent: PDF图片提取需要Adobe SDK（pdfservices-sdk）和PIL库（Pillow）处理图片；
+#   base64用于图片编码，io用于字节流处理，tempfile用于临时文件管理
+from adobe.pdfservices.operation.pdfjobs.params.extract_pdf.extract_renditions_element_type import ExtractRenditionsElementType
+import base64
+from PIL import Image
+
+# 图片处理常量（可调整以平衡质量和token消耗）
+PDF_IMAGE_SCALE_FACTOR = 0.5  # 图片缩放比例（50%）
 
 logger = logging.getLogger(__name__)
+# DOC-END id=handlers/articles/adobe-imports#1
 
 
 # DOC-BEGIN id=handlers/articles/cancel-all-blogs#1 type=behavior v=1
@@ -135,77 +157,352 @@ async def handle_article_delete_blog(data: ArticleDeleteBlogReq):
         "errors": errors,
     }
 
+# DOC-BEGIN id=handlers/articles/extract-images#1 type=api v=2
+# summary: 处理文章图片提取请求，根据文件扩展名（.pdf或.html）分派到不同的处理函数；
+#   PDF文件调用Adobe PDF Extract API，HTML文件使用原有的BeautifulSoup解析逻辑
+# intent: 统一入口函数，支持PDF和HTML两种格式的图片提取，保持返回格式一致
 async def handle_article_extract_images(data: ArticleExtractImagesReq):
     abs_path = resolve_article_abs_path(data.article_id)
+    
+    # 根据文件扩展名判断处理方式
+    if abs_path.lower().endswith('.pdf'):
+        # 调用PDF处理函数
+        return await handle_article_extract_images_from_pdf(data)
+    else:
+        # 原有的HTML处理逻辑
+        with open(abs_path, "r", encoding="utf-8", errors="ignore") as f:
+            raw_html = f.read()
 
-    with open(abs_path, "r", encoding="utf-8", errors="ignore") as f:
-        raw_html = f.read()
+        css_var_map = _build_css_var_map(raw_html)
 
-    css_var_map = _build_css_var_map(raw_html)
+        soup = BeautifulSoup(raw_html, "lxml")
 
-    soup = BeautifulSoup(raw_html, "lxml")
+        images_data = []
+        seen_src_hashes = set()
+        count = 1
 
-    images_data = []
-    seen_src_hashes = set()
-    count = 1
+        MIN_WIDTH = 100
+        MIN_HEIGHT = 100
+        MIN_TOTAL = 500
 
-    MIN_WIDTH = 100
-    MIN_HEIGHT = 100
-    MIN_TOTAL = 500
-
-    for img in soup.find_all("img"):
-        real_src = _extract_real_image_data(img, css_var_map)
-        if not real_src:
-            continue
-
-        clean_src = real_src.strip()
-
-        src_hash = hashlib.md5(clean_src.encode()).hexdigest()
-        if src_hash in seen_src_hashes:
-            continue
-
-        w, h = _get_size_from_data_uri(clean_src)
-
-        print(f"[IMAGE] width={w}, height={h}, total={w+h}")
-        if w is not None and h is not None:
-            if w < MIN_WIDTH or h < MIN_HEIGHT or w + h < MIN_TOTAL:
+        for img in soup.find_all("img"):
+            real_src = _extract_real_image_data(img, css_var_map)
+            if not real_src:
                 continue
 
-        if w is None or h is None:
-            w2, h2 = _get_img_size(img)
-            w = w if w is not None else w2
-            h = h if h is not None else h2
+            clean_src = real_src.strip()
 
-        header_part = clean_src.split(",", 1)[0].lower()
-        if "image/jpeg" in header_part or "image/jpg" in header_part:
-            ext, mime = "jpg", "image/jpeg"
-        elif "image/webp" in header_part:
-            ext, mime = "webp", "image/webp"
-        elif "image/png" in header_part:
-            ext, mime = "png", "image/png"
-        elif "image/gif" in header_part:
-            ext, mime = "gif", "image/gif"
-        else:
-            continue
+            src_hash = hashlib.md5(clean_src.encode()).hexdigest()
+            if src_hash in seen_src_hashes:
+                continue
 
-        alt_text = (img.get("alt") or "").strip()
-        caption = alt_text if alt_text else f"Figure {count}"
+            w, h = _get_size_from_data_uri(clean_src)
 
-        seen_src_hashes.add(src_hash)
-        images_data.append({
-            "index": count,
-            "filename": f"figure_{count}.{ext}",
-            "caption": caption,
-            "width": w,
-            "height": h,
-            "mime_type": mime,
-            "base64_content": clean_src,
-        })
-        count += 1
+            print(f"[IMAGE] width={w}, height={h}, total={w+h}")
+            if w is not None and h is not None:
+                if w < MIN_WIDTH or h < MIN_HEIGHT or w + h < MIN_TOTAL:
+                    continue
 
-    print(f"[extract_images] css_var_map={len(css_var_map)} images={len(images_data)}")
+            if w is None or h is None:
+                w2, h2 = _get_img_size(img)
+                w = w if w is not None else w2
+                h = h if h is not None else h2
 
-    return {"ok": True, "article_id": data.article_id, "total": len(images_data), "images": images_data}
+            header_part = clean_src.split(",", 1)[0].lower()
+            if "image/jpeg" in header_part or "image/jpg" in header_part:
+                ext, mime = "jpg", "image/jpeg"
+            elif "image/webp" in header_part:
+                ext, mime = "webp", "image/webp"
+            elif "image/png" in header_part:
+                ext, mime = "png", "image/png"
+            elif "image/gif" in header_part:
+                ext, mime = "gif", "image/gif"
+            else:
+                continue
+
+            alt_text = (img.get("alt") or "").strip()
+            caption = alt_text if alt_text else f"Figure {count}"
+
+            seen_src_hashes.add(src_hash)
+            images_data.append({
+                "index": count,
+                "filename": f"figure_{count}.{ext}",
+                "caption": caption,
+                "width": w,
+                "height": h,
+                "mime_type": mime,
+                "base64_content": clean_src,
+            })
+            count += 1
+
+        print(f"[extract_images] css_var_map={len(css_var_map)} images={len(images_data)}")
+
+        return {"ok": True, "article_id": data.article_id, "total": len(images_data), "images": images_data}
+# DOC-END id=handlers/articles/extract-images#1
+
+# DOC-BEGIN id=handlers/articles/extract-images-from-pdf#1 type=api v=1
+# summary: 使用Adobe PDF Extract API从PDF文件中提取图片，接收Adobe API凭据，
+#   调用Adobe服务提取图片并转换为base64格式，返回与HTML版本相同格式的结果
+# intent: 实现PDF图片提取功能，支持Adobe免费套餐（每月500次），处理Adobe返回的ZIP文件并提取图片
+async def handle_article_extract_images_from_pdf(data: ArticleExtractImagesReq):
+    # 1. 验证Adobe API凭据
+    if not data.pdf_services_client_id or not data.pdf_services_client_secret:
+        return {"ok": False, "error": "Adobe PDF Services credentials required for PDF extraction"}
+    
+    try:
+        # 2. 读取PDF文件
+        abs_path = resolve_article_abs_path(data.article_id)
+        with open(abs_path, 'rb') as f:
+            input_stream = f.read()
+        
+        # 3. 初始化Adobe PDF Services
+        credentials = ServicePrincipalCredentials(
+            client_id=data.pdf_services_client_id,
+            client_secret=data.pdf_services_client_secret
+        )
+        pdf_services = PDFServices(credentials=credentials)
+        
+        # 4. 上传PDF文件
+        input_asset = pdf_services.upload(input_stream=input_stream, mime_type=PDFServicesMediaType.PDF)
+        
+        # 5. 创建提取参数（只提取图片）
+        extract_pdf_params = ExtractPDFParams(
+            elements_to_extract=[ExtractElementType.TEXT, ExtractElementType.TABLES],
+            elements_to_extract_renditions=[ExtractRenditionsElementType.FIGURES],
+        )
+        
+        # 6. 提交提取任务
+        extract_pdf_job = ExtractPDFJob(input_asset=input_asset, extract_pdf_params=extract_pdf_params)
+        location = pdf_services.submit(extract_pdf_job)
+        pdf_services_response = pdf_services.get_job_result(location, ExtractPDFResult)
+        
+        # 7. 获取结果ZIP文件，保存到PDF同目录以便调试和复用
+        result_asset = pdf_services_response.get_result().get_resource()
+        stream_asset = pdf_services.get_content(result_asset)
+        zip_bytes = stream_asset.get_input_stream()
+        
+        # DOC-BEGIN id=handlers/articles/pdf-zip-save#1 type=behavior v=1
+        # summary: 将Adobe返回的ZIP字节流保存到PDF文件同目录，文件名与PDF相同（.zip后缀）；
+        #   已存在则跳过（避免重复写入），写入失败不阻塞主流程
+        # intent: ZIP包含structuredData.json和所有图片，保存后可用于调试/复用/离线分析，
+        #   避免每次重新调用Adobe API消耗配额
+        zip_save_path = os.path.splitext(abs_path)[0] + ".adobe.zip"
+        try:
+            if not os.path.exists(zip_save_path):
+                with open(zip_save_path, "wb") as zf:
+                    zf.write(zip_bytes)
+                logger.info(f"Saved Adobe ZIP to {zip_save_path}")
+            else:
+                logger.info(f"Adobe ZIP already exists at {zip_save_path}, skipping save")
+        except Exception as e:
+            logger.warning(f"Failed to save Adobe ZIP: {e}")
+        # DOC-END id=handlers/articles/pdf-zip-save#1
+
+        # 8. 处理ZIP文件并提取图片和文本，解压内容保存到 *_extracted 目录
+        # DOC-BEGIN id=handlers/articles/pdf-output-dir#1 type=behavior v=1
+        # summary: 计算解压输出目录为PDF文件名去掉扩展名后加_extracted后缀（如 xxx_extracted/），
+        #   传入extract_images_from_adobe_zip使其将structuredData.json、figure图片、table图片落盘
+        # intent: output_dir与PDF/ZIP同级存放，便于统一管理；目录创建失败时不阻塞主流程，
+        #   仅跳过落盘（output_dir传None）
+        pdf_stem = os.path.splitext(abs_path)[0]
+        output_dir = pdf_stem + "_extracted"
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+        except Exception as e:
+            logger.warning(f"Failed to create output dir {output_dir}: {e}")
+            output_dir = None
+        # DOC-END id=handlers/articles/pdf-output-dir#1
+        zip_result = await extract_images_from_adobe_zip(zip_bytes, output_dir=output_dir)
+        images_data = zip_result["images"]
+
+        return {
+            "ok": True,
+            "article_id": data.article_id,
+            "total": len(images_data),
+            "images": images_data,
+            "text": zip_result["text"],
+        }
+
+    except Exception as e:
+        logging.exception(f'Adobe PDF Extract API error: {e}')
+        return {"ok": False, "error": f"Adobe PDF Extract API failed: {str(e)}"}
+# DOC-END id=handlers/articles/extract-images-from-pdf#1
+
+# DOC-BEGIN id=handlers/articles/extract-images-from-adobe-zip#3 type=behavior v=3
+# summary: 从Adobe PDF Extract API返回的ZIP文件中提取图片和正文文本。
+#   图片来源：structuredData.json中所有Figure元素的filePaths（含Figure[2]等变体）+ tables/目录下的.png文件。
+#   正文来源：structuredData.json中Path类型为P/H1/H2/Title/Footnote的Text字段拼接。
+#   所有图片经过PIL获取实际尺寸，转为base64返回。
+#   可选output_dir参数：指定后将structuredData.json和每张图片（figure_N.png/table_N.png）写入该目录，便于离线复用。
+# intent: 原实现仅匹配路径精确以"/Figure"结尾的元素（仅1个），遗漏了Figure[2]-Figure[19]；
+#   另外完全未提取正文文本，表格的xlsx也不发送给LLM（只发png图片）。
+#   ZIP使用io.BytesIO内存流处理，同时可选地将内容持久化到磁盘。
+async def extract_images_from_adobe_zip(zip_content: bytes, output_dir: str = None) -> dict:
+    """
+    从Adobe Extract API返回的ZIP中提取图片和正文文本。
+
+    Parameters:
+    zip_content (bytes): ZIP文件字节流
+    output_dir (str, optional): 解压内容保存目录，如传入则将structuredData.json和图片落盘
+
+    Returns:
+    dict: {"images": list[dict], "text": str}
+    """
+    images_data = []
+    full_text = ""
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_content), 'r') as zip_ref:
+            json_files = [f for f in zip_ref.namelist() if f.endswith('.json')]
+            if not json_files:
+                return {"images": [], "text": ""}
+
+            # 读取 structuredData.json
+            with zip_ref.open(json_files[0]) as json_file:
+                structure_data = json.load(json_file)
+
+            # DOC-BEGIN id=handlers/articles/adobe-zip-save-json#1 type=behavior v=1
+            # summary: 将structuredData.json保存到output_dir（如果指定），便于离线分析和调试
+            # intent: structuredData.json包含Adobe提取的所有元素信息（Path/Text/filePaths等），
+            #   保存后可以不重新调用API而复用这些数据
+            if output_dir:
+                try:
+                    os.makedirs(output_dir, exist_ok=True)
+                    json_save_path = os.path.join(output_dir, "structuredData.json")
+                    with open(json_save_path, "w", encoding="utf-8") as jf:
+                        json.dump(structure_data, jf, ensure_ascii=False, indent=2)
+                    logger.info(f"Saved structuredData.json to {json_save_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to save structuredData.json: {e}")
+            # DOC-END id=handlers/articles/adobe-zip-save-json#1
+
+            elements = structure_data.get('elements', [])
+
+            # 1. 提取正文文本：P/H1/H2/Title/Footnote（排除L参考文献）
+            text_parts = []
+            text_types = {"P", "H1", "H2", "Title", "Footnote"}
+            for el in elements:
+                path = el.get("Path", "")
+                parts = [p for p in path.split("/") if p]
+                if len(parts) >= 2:
+                    base_cat = parts[1].split("[")[0]
+                    if base_cat in text_types and "Text" in el:
+                        text_parts.append(el["Text"])
+            full_text = "\n".join(text_parts)
+
+            # 2. 提取Figure图片：匹配 //Document/Figure 和 //Document/Figure[N]
+            figure_pattern = re.compile(r"^//Document/Figure(\[\d+\])?$")
+            count = 1
+
+            for el in elements:
+                path = el.get("Path", "")
+                if not figure_pattern.match(path):
+                    continue
+
+                file_paths = el.get("filePaths", [])
+                if not file_paths:
+                    continue
+
+                img_rel_path = file_paths[0]
+                if img_rel_path not in zip_ref.namelist():
+                    continue
+
+                with zip_ref.open(img_rel_path) as img_file:
+                    img_bytes = img_file.read()
+
+                ext = img_rel_path.rsplit(".", 1)[-1].lower()
+                if ext in ("jpg", "jpeg"):
+                    mime_type = "image/jpeg"
+                    pil_format = "JPEG"
+                elif ext == "png":
+                    mime_type = "image/png"
+                    pil_format = "PNG"
+                else:
+                    continue
+
+                # 获取实际尺寸
+                orig_w, orig_h = Image.open(io.BytesIO(img_bytes)).size
+                b64_content = base64.b64encode(img_bytes).decode("utf-8")
+
+                # DOC-BEGIN id=handlers/articles/adobe-zip-save-figure#1 type=behavior v=1
+                # summary: 将Figure图片保存到output_dir，文件名如figure_1.png/figure_2.jpg；
+                #   需要重新从img_bytes打开流写入（原zip_ref.open流已在上文关闭）
+                # intent: 图片落盘后可以独立于ZIP文件使用，便于调试和离线分析；
+                #   文件名与images_data中的filename字段保持一致，便于对照
+                if output_dir:
+                    try:
+                        save_path = os.path.join(output_dir, f"figure_{count}.{ext}")
+                        with open(save_path, "wb") as sf:
+                            sf.write(img_bytes)
+                        logger.info(f"Saved figure image to {save_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to save figure image {count}: {e}")
+                # DOC-END id=handlers/articles/adobe-zip-save-figure#1
+
+                images_data.append({
+                    "index": count,
+                    "filename": f"figure_{count}.{ext}",
+                    "caption": f"Figure {count}",
+                    "width": orig_w,
+                    "height": orig_h,
+                    "mime_type": mime_type,
+                    "base64_content": f"data:{mime_type};base64,{b64_content}",
+                })
+                count += 1
+
+            # 3. 提取表格图片：tables/*.png（跳过.xlsx）
+            for entry in sorted(zip_ref.namelist()):
+                if not entry.startswith("tables/"):
+                    continue
+                ext = entry.rsplit(".", 1)[-1].lower()
+                if ext != "png":
+                    continue
+
+                with zip_ref.open(entry) as img_file:
+                    img_bytes = img_file.read()
+
+                tbl_img = Image.open(io.BytesIO(img_bytes))
+                new_w, new_h = tbl_img.size
+                b64_content = base64.b64encode(img_bytes).decode("utf-8")
+
+                # DOC-BEGIN id=handlers/articles/adobe-zip-save-table#1 type=behavior v=1
+                # summary: 将Table图片保存到output_dir，文件名如table_1.png/table_2.png
+                # intent: 表格截图落盘，文件名与images_data中的filename字段保持一致；
+                #   与Figure图片并列存储在同一个_extracted目录下
+                if output_dir:
+                    try:
+                        tbl_basename = os.path.basename(entry)
+                        tbl_count = tbl_basename.replace("table_", "").replace(".png", "")
+                        save_name = f"table_{count}.png"
+                        save_path = os.path.join(output_dir, save_name)
+                        with open(save_path, "wb") as sf:
+                            sf.write(img_bytes)
+                        logger.info(f"Saved table image to {save_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to save table image: {e}")
+                # DOC-END id=handlers/articles/adobe-zip-save-table#1
+
+                images_data.append({
+                    "index": count,
+                    "filename": f"table_{count}.png",
+                    "caption": f"Table {count}",
+                    "width": new_w,
+                    "height": new_h,
+                    "mime_type": "image/png",
+                    "base64_content": f"data:image/png;base64,{b64_content}",
+                })
+                count += 1
+
+    except Exception as e:
+        logger.error(f"Error processing Adobe ZIP: {e}")
+        logger.exception(e)
+
+    return {
+        "images": images_data,
+        "text": full_text,
+    }
+# DOC-END id=handlers/articles/extract-images-from-adobe-zip#3
+# DOC-END id=handlers/articles/extract-images-from-adobe-zip#2
 
 
 async def handle_article_list(data: ArticleListReq):
@@ -317,17 +614,88 @@ async def handle_article_generate_blog(data: ArticleGenerateBlogReq):
             return  # 已有其他进程在跑，放弃
 
         try:
-            title, raw_html = load_raw_html(abs_path)
-            logger.info(f"[Worker] Start generating blog for: {title}")
-            cleaned_text = clean_html_for_injection(raw_html)
+            # PDF 文件不应调用 load_raw_html（会读取二进制乱码），
+            # 直接从文件名取标题；HTML 文件正常解析标题和正文
+            is_pdf = abs_path.lower().endswith('.pdf')
+            if is_pdf:
+                title = re.sub(r'\.pdf$', '', os.path.basename(abs_path), flags=re.IGNORECASE) or "Untitled"
+                cleaned_text = ""
+                logger.info(f"[Worker] Start generating blog for PDF: {title}")
+            else:
+                title, raw_html = load_raw_html(abs_path)
+                cleaned_text = clean_html_for_injection(raw_html)
+                logger.info(f"[Worker] Start generating blog for: {title}")
 
+            # DOC-BEGIN id=handlers/bloggen/extract-all#1 type=behavior v=1
+            # summary: 提取文章图片和正文文本；PDF路径通过extract_images_from_adobe_zip同时提取text字段（Adobe结构化提取），
+            #   HTML路径extract_images返回的images已有base64_content，text为空由cleaned_text兜底。
+            #   images_b64列表包含所有图片的base64字符串，传给多模态LLM直接"看图"。
+            # intent: 聚合两个来源的数据——img_result["images"]含base64/img_meta，img_result["text"]含PDF正文；
+            #   HTML文本仍用cleaned_text（从clean_html_for_injection来的），PDF文本优先用extract的text。
+            logger.info(f"[BlogGen][{data.article_id}] Extracting images and text...")
+            # DOC-BEGIN id=handlers/bloggen/extract-with-credentials#1 type=behavior v=2
+            # summary: 提取文章图片和正文，传递前端传入的Adobe PDF Services凭据；
+            #   PDF文件需要凭据调用Adobe API，HTML文件忽略凭据直接解析。
+            #   增加 ok 检查：如果图片提取返回 ok=False（如Adobe超时），立即抛异常终止 worker，
+            #   避免用空内容继续生成无意义的blog。
+            # intent: 前端在用户选择PDF生成blog时传入凭据，后端透传到图片提取函数；
+            #   凭据为None时HTML路径不受影响。
+            #   之前缺少 ok 检查，导致 Adobe 超时/认证失败后仍继续生成空blog。
             img_result = asyncio.run(
                 handle_article_extract_images(
-                    ArticleExtractImagesReq(article_id=data.article_id)
+                    ArticleExtractImagesReq(
+                        article_id=data.article_id,
+                        pdf_services_client_id=data.pdf_services_client_id,
+                        pdf_services_client_secret=data.pdf_services_client_secret,
+                    )
                 )
             )
+            # DOC-END id=handlers/bloggen/extract-with-credentials#1
+
+            # DOC-BEGIN id=handlers/bloggen/extract-result-check#1 type=behavior v=1
+            # summary: 检查图片提取结果的 ok 字段；若为 False 则抛出异常使 worker 进入错误处理流程，
+            #   写入 .error 文件供前端展示，而非用空 images/空 text 继续生成。
+            # intent: PDF图片提取（Adobe API）可能因网络超时、凭据错误、文件过大等原因失败；
+            #   之前失败后返回 ok=False 但未被检查，导致后续 generate_blog_from_article_tree
+            #   收到 0 images + 0 text，生成无意义输出还消耗 LLM token。
+            if not img_result.get("ok", False):
+                error_msg = img_result.get("error", "Image extraction failed")
+                raise RuntimeError(f"Image extraction failed: {error_msg}")
+            # DOC-END id=handlers/bloggen/extract-result-check#1
+
             all_images = img_result.get("images", [])
             write_text_file(all_img_path, json.dumps(all_images, ensure_ascii=False, indent=2))
+            logger.info(f"[BlogGen][{data.article_id}] Extracted {len(all_images)} images")
+
+            # PDF提取的文本优先使用（更准确），HTML用cleaned_text
+            extracted_text = img_result.get("text", "")
+            article_text_for_gen = extracted_text if extracted_text else cleaned_text
+            logger.info(f"[BlogGen][{data.article_id}] Text length: {len(article_text_for_gen)} chars")
+
+            # DOC-BEGIN id=handlers/bloggen/image-preprocessing#1 type=behavior v=1
+            # summary: 收集所有图片的base64并进行分辨率预处理，降低LLM token消耗；
+            #   使用LLM.reduce_image_resolution按PDF_IMAGE_SCALE_FACTOR缩放；
+            #   仅对大于阈值（800px宽或高）的图片进行缩放，小图保持原样
+            # intent: 高分辨率图片直接发送给多模态LLM会消耗大量token（按像素计费）；
+            #   预处理可减少50-75%的token消耗，同时保持足够清晰度供LLM理解内容
+            images_b64 = []
+            from src.services.llm import LLM
+            for img in all_images:
+                b64 = img.get("base64_content", "")
+                if not b64:
+                    continue
+                # 对大图进行缩放预处理
+                w = img.get("width", 0) or 0
+                h = img.get("height", 0) or 0
+                if w > 800 or h > 800:
+                    try:
+                        b64 = LLM.reduce_image_resolution(b64, scale_factor=0.5)
+                        logger.info(f"[BlogGen][{data.article_id}] Resized image {img.get('index')}: {w}x{h} -> reduced")
+                    except Exception as e:
+                        logger.warning(f"[BlogGen][{data.article_id}] Failed to resize image {img.get('index')}: {e}")
+                images_b64.append(b64)
+            logger.info(f"[BlogGen][{data.article_id}] Prepared {len(images_b64)} images for multimodal (after preprocessing)")
+            # DOC-END id=handlers/bloggen/image-preprocessing#1
 
             image_catalog = [
                 {
@@ -351,15 +719,18 @@ async def handle_article_generate_blog(data: ArticleGenerateBlogReq):
             task_dir = f"{DATA_DIR}/tasks/{data.task_id}"
             tc = Tool_Calls(LOG_DIR=task_dir, MAX_CHAR=800000, mode="Summary")
 
+            logger.info(f"[BlogGen][{data.article_id}] Starting blog generation with multimodal LLM...")
             result = generate_blog_from_article_tree(
                 task_id=data.task_id,
                 article_id=data.article_id,
                 article_title=title,
-                article_text=cleaned_text,
+                article_text=article_text_for_gen,
                 image_catalog=image_catalog,
+                images_b64=images_b64,
                 config=config,
                 tc=tc,
             )
+            # DOC-END id=handlers/bloggen/extract-all#1
 
             blog_md = result["blog_markdown"]
             write_text_file(txt_path, blog_md)

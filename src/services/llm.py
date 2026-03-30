@@ -740,3 +740,110 @@ class LLM:
             tools.append(tool)
 
         return tools
+
+    # DOC-BEGIN id=llm/image-processing#1 type=utility v=1
+    # summary: 图片处理工具方法，用于优化LLM处理图片的成本
+    # intent: 高分辨率图片直接发送给LLM会消耗大量token，需要预处理降低分辨率
+
+    @staticmethod
+    def reduce_image_resolution(base64_image: str, scale_factor: float = 0.5) -> str:
+        """
+        降低图片分辨率，减少LLM token消耗。
+
+        Parameters:
+        base64_image (str): base64编码的图片字符串（可带data URL前缀）
+        scale_factor (float): 缩放比例（默认0.5，即缩小到50%）
+
+        Returns:
+        str: 缩放后的base64图片字符串（带data URL前缀）
+        """
+        from PIL import Image
+        import io as _io
+
+        # 处理data URL前缀
+        if base64_image.startswith('data:'):
+            header, data = base64_image.split(',', 1)
+            img_bytes = base64.b64decode(data)
+        else:
+            header = 'data:image/jpeg;base64'
+            img_bytes = base64.b64decode(base64_image)
+
+        img = Image.open(_io.BytesIO(img_bytes))
+        original_width, original_height = img.size
+        new_width = int(original_width * scale_factor)
+        new_height = int(original_height * scale_factor)
+
+        img_resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+        buffer = _io.BytesIO()
+        if 'png' in header:
+            fmt = 'PNG'
+        elif 'webp' in header:
+            fmt = 'WEBP'
+        else:
+            fmt = 'JPEG'
+
+        img_resized.save(buffer, format=fmt)
+        resized_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+        return f"{header},{resized_base64}"
+
+    def query_multimodal(self, prompt: str, images: List[str], verbose: bool = True) -> str:
+        """
+        多模态查询，支持文本和图片输入，无需历史记录，非流式。
+
+        Parameters:
+        prompt (str): 文本提示
+        images (List[str]): 图片base64字符串列表（格式：data:image/jpeg;base64,...）
+        verbose (bool): 是否打印输出
+
+        Returns:
+        str: LLM响应文本
+        """
+        content = []
+        content.append({"type": "text", "text": prompt})
+
+        for img_base64 in images:
+            if not img_base64.startswith('data:'):
+                img_base64 = f"data:image/jpeg;base64,{img_base64}"
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": img_base64}
+            })
+
+        messages = [{"role": "user", "content": content}]
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            "stream": False,
+        }
+
+        try:
+            response = requests.post(
+                self.llm_url,
+                headers=headers,
+                json=payload,
+                proxies=self.proxies,
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            if 'choices' in result and len(result['choices']) > 0:
+                text = result['choices'][0].get('message', {}).get('content', '')
+                if self.remove_think_enabled:
+                    text = self.remove_think(text)
+                if verbose:
+                    print(f"[LLM multimodal] response length={len(text)}")
+                return text
+
+            return ""
+        except Exception as e:
+            logger.error(f"Multimodal query failed: {e}")
+            return f"Error: {e}"
+
+    # DOC-END id=llm/image-processing#1

@@ -10,7 +10,7 @@ from src.config import ARTICLES_ROOT
 
 def resolve_article_abs_path(article_id: str) -> str:
     """
-    article_id: 相对 ARTICLES_ROOT 的路径，如 "physics/ai_in_phy/a.html"
+    article_id: 相对 ARTICLES_ROOT 的路径，如 "physics/ai_in_phy/a.html" 或 "physics/ai_in_phy/a.pdf"
     返回: 绝对路径
     """
     rel = (article_id or "").lstrip("/").strip()
@@ -25,9 +25,11 @@ def resolve_article_abs_path(article_id: str) -> str:
     if not (os.path.exists(abs_path) and os.path.isfile(abs_path)):
         raise HTTPException(status_code=404, detail=f"Article file not found: {article_id}")
 
-    # 可选：只允许 .html
-    if not abs_path.lower().endswith(".html"):
-        raise HTTPException(status_code=400, detail="Only .html is supported")
+    # 允许 .html 和 .pdf 文件
+    allowed_extensions = {".html", ".pdf"}
+    file_ext = os.path.splitext(abs_path.lower())[1]
+    if file_ext not in allowed_extensions:
+        raise HTTPException(status_code=400, detail=f"Only {', '.join(allowed_extensions)} files are supported")
 
     return abs_path
 
@@ -52,9 +54,11 @@ def build_articles_tree(root_dir: str = ARTICLES_ROOT) -> Dict[str, Any]:
             if os.path.isdir(abs_p):
                 node["children"].append(walk(abs_p, rel_p))
             else:
-                if ent.lower().endswith(".html"):
+                file_ext = ent.lower()
+                # 支持 .html 和 .pdf 文件
+                if file_ext.endswith(".html") or file_ext.endswith(".pdf"):
                     # DOC-BEGIN id=helpers/articles/tree-blog-status#1 type=behavior v=1
-                    # summary: 根据 .html 同名的 .txt/.lock/.queued/.error 文件是否存在，
+                    # summary: 根据 .html 或 .pdf 同名的 .txt/.lock/.queued/.error 文件是否存在，
                     #   计算该文章的 blog_status 并附加到 file 节点上；
                     #   优先级：txt(completed) > lock(running) > queued(queued) > error(failed) > none
                     # intent: 前端 fetchArticles 遍历 tree 初始化 blogStatuses Map，
@@ -90,11 +94,20 @@ def build_articles_tree(root_dir: str = ARTICLES_ROOT) -> Dict[str, Any]:
                         tts_status = "none"
                     # DOC-END id=helpers/articles/tree-tts-status#1
 
+                    # 获取文件扩展名和标题
+                    if file_ext.endswith(".html"):
+                        title = ent[:-5]  # 移除 .html
+                        file_type = "html"
+                    else:  # .pdf
+                        title = ent[:-4]  # 移除 .pdf
+                        file_type = "pdf"
+
                     node["children"].append({
                         "type": "file",
                         "name": ent,
                         "article_id": rel_p.replace("\\", "/"),
-                        "title": ent[:-5],
+                        "title": title,
+                        "file_type": file_type,
                         "blog_status": blog_status,
                         "tts_status": tts_status,
                     })

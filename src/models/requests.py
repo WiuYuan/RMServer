@@ -32,8 +32,17 @@ class ArticleDeleteBlogReq(BaseModel):
 class TaskGetTerminalStatusReq(BaseModel):
     task_id: str
     
+# DOC-BEGIN id=models/requests/article-extract-images-req#1 type=design v=2
+# summary: ArticleExtractImagesReq 包含文章ID和可选的Adobe PDF Services凭据；
+#   PDF图片提取需要client_id和client_secret，HTML提取不需要；
+#   可选字段允许前端按需传递凭据，同时保持向后兼容
+# intent: 支持PDF和HTML两种格式的图片提取；PDF需要Adobe API凭据（每月500次免费），
+#   HTML不需要额外凭据；保持模型简洁，避免强制传递不需要的参数
 class ArticleExtractImagesReq(BaseModel):
     article_id: str
+    pdf_services_client_id: Optional[str] = None
+    pdf_services_client_secret: Optional[str] = None
+# DOC-END id=models/requests/article-extract-images-req#1
 
 class ArticleUpsertHTML(BaseModel):
     task_id: Optional[str] = None
@@ -83,6 +92,11 @@ class ActionRequest(BaseModel):
 class StopData(BaseModel):
     task_id: str
     
+# DOC-BEGIN id=models/requests/article-generate-blog-req#1 type=design v=1
+# summary: ArticleGenerateBlogReq 包含博客生成所需的全部参数：文章定位(article_id/task_id)、
+#   LLM配置(model_name/api_key/llm_url)、风格(style)和可选的Adobe PDF Services凭据；
+#   PDF图片提取需要client_id和client_secret，HTML不需要
+# intent: 前端在生成blog时统一传递所有参数，后端按需使用；凭据可选保持向后兼容
 class ArticleGenerateBlogReq(BaseModel):
     task_id: str
     article_id: str
@@ -90,6 +104,9 @@ class ArticleGenerateBlogReq(BaseModel):
     api_key: str
     llm_url: Optional[str] = None
     style: Optional[Literal["math", "normal", "rigorous"]] = "math"
+    pdf_services_client_id: Optional[str] = None
+    pdf_services_client_secret: Optional[str] = None
+# DOC-END id=models/requests/article-generate-blog-req#1
 
 
 # DOC-BEGIN id=models/requests/tts-req#1 type=design v=1

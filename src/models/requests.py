@@ -92,11 +92,13 @@ class ActionRequest(BaseModel):
 class StopData(BaseModel):
     task_id: str
     
-# DOC-BEGIN id=models/requests/article-generate-blog-req#1 type=design v=1
+# DOC-BEGIN id=models/requests/article-generate-blog-req#2 type=design v=2
 # summary: ArticleGenerateBlogReq 包含博客生成所需的全部参数：文章定位(article_id/task_id)、
-#   LLM配置(model_name/api_key/llm_url)、风格(style)和可选的Adobe PDF Services凭据；
-#   PDF图片提取需要client_id和client_secret，HTML不需要
-# intent: 前端在生成blog时统一传递所有参数，后端按需使用；凭据可选保持向后兼容
+#   主LLM配置(model_name/api_key/llm_url)、风格(style)、可选的Adobe PDF Services凭据、
+#   以及可选的后处理LLM配置(refine_model_name/refine_api_key/refine_llm_url)。
+#   后处理LLM是单模态，用于精修和概念补充，不处理图片。
+# intent: 前端在生成blog时统一传递所有参数，后端按需使用；凭据可选保持向后兼容；
+#   后处理参数可选，不传则跳过后处理步骤
 class ArticleGenerateBlogReq(BaseModel):
     task_id: str
     article_id: str
@@ -106,7 +108,15 @@ class ArticleGenerateBlogReq(BaseModel):
     style: Optional[Literal["math", "normal", "rigorous"]] = "math"
     pdf_services_client_id: Optional[str] = None
     pdf_services_client_secret: Optional[str] = None
-# DOC-END id=models/requests/article-generate-blog-req#1
+    # 后处理LLM配置（单模态，用于精修和概念补充）
+    refine_model_name: Optional[str] = None
+    refine_api_key: Optional[str] = None
+    refine_llm_url: Optional[str] = None
+    # 后处理LLM配置（单模态，用于精修和概念补充）
+    refine_model_name: Optional[str] = None
+    refine_api_key: Optional[str] = None
+    refine_llm_url: Optional[str] = None
+# DOC-END id=models/requests/article-generate-blog-req#2
 
 
 # DOC-BEGIN id=models/requests/tts-req#1 type=design v=1

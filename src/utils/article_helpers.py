@@ -33,17 +33,26 @@ def resolve_article_abs_path(article_id: str) -> str:
 
     return abs_path
 
+# DOC-BEGIN id=helpers/articles/build-tree-redesign#1 type=behavior v=1
+# summary: 重构 build_articles_tree：1) 为每个文件节点附加 mtime（最后修改时间戳），
+#   目录节点附加 max_mtime（子树中最新修改时间）；2) 过滤不含 PDF/HTML 的空文件夹。
+#   mtime 通过 os.path.getmtime 获取；目录的 max_mtime 取所有子节点中的最大值。
+#   过滤逻辑：递归后检查 children 是否为空，为空则不加入父节点。
+# intent: 前端按 mtime 降序排序可让最近修改的文章排在前面；过滤空目录避免 UI 显示无用文件夹。
+#   注意：mv（移动文件）不修改 mtime，移动后文件排序位置不变，如需刷新可用 touch 命令。
 def build_articles_tree(root_dir: str = ARTICLES_ROOT) -> Dict[str, Any]:
     root_dir = os.path.abspath(root_dir)
 
-    def walk(cur_abs: str, cur_rel: str) -> Dict[str, Any]:
+    def walk(cur_abs: str, cur_rel: str) -> Optional[Dict[str, Any]]:
         name = os.path.basename(cur_abs) if cur_rel else os.path.basename(root_dir)
-        node = {"type": "dir", "name": name, "path": cur_rel, "children": []}
+        node = {"type": "dir", "name": name, "path": cur_rel, "children": [], "mtime": 0}
 
         try:
             entries = sorted(os.listdir(cur_abs))
         except Exception:
             return node
+
+        max_mtime = 0.0
 
         for ent in entries:
             if ent.startswith("."):
@@ -52,7 +61,11 @@ def build_articles_tree(root_dir: str = ARTICLES_ROOT) -> Dict[str, Any]:
             rel_p = os.path.join(cur_rel, ent) if cur_rel else ent
 
             if os.path.isdir(abs_p):
-                node["children"].append(walk(abs_p, rel_p))
+                child = walk(abs_p, rel_p)
+                # 过滤空文件夹：child 为 None 或 children 为空时不加入
+                if child and (child["children"] or child.get("max_mtime", 0) > 0):
+                    node["children"].append(child)
+                    max_mtime = max(max_mtime, child.get("mtime", 0), child.get("max_mtime", 0))
             else:
                 file_ext = ent.lower()
                 # 支持 .html 和 .pdf 文件
@@ -102,6 +115,13 @@ def build_articles_tree(root_dir: str = ARTICLES_ROOT) -> Dict[str, Any]:
                         title = ent[:-4]  # 移除 .pdf
                         file_type = "pdf"
 
+                    # 获取文件最后修改时间
+                    try:
+                        mtime = os.path.getmtime(abs_p)
+                    except OSError:
+                        mtime = 0.0
+                    max_mtime = max(max_mtime, mtime)
+
                     node["children"].append({
                         "type": "file",
                         "name": ent,
@@ -110,11 +130,18 @@ def build_articles_tree(root_dir: str = ARTICLES_ROOT) -> Dict[str, Any]:
                         "file_type": file_type,
                         "blog_status": blog_status,
                         "tts_status": tts_status,
+                        "mtime": mtime,
                     })
+
+        # 目录节点记录子树中最新修改时间
+        node["max_mtime"] = max_mtime
         return node
 
     ensure_dir(root_dir)
-    return walk(root_dir, "")
+    result = walk(root_dir, "")
+    # 根目录永远返回，即使为空
+    return result if result else {"type": "dir", "name": os.path.basename(root_dir), "path": "", "children": [], "mtime": 0}
+# DOC-END id=helpers/articles/build-tree-redesign#1
 
 def sanitize_filename(s: str) -> str:
     """仅用于没有 ID 时生成默认文件名"""

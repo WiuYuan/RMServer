@@ -791,6 +791,7 @@ class LLM:
     def query_multimodal(self, prompt: str, images: List[str], verbose: bool = True) -> str:
         """
         多模态查询，支持文本和图片输入，无需历史记录，非流式。
+        每张图片前插入 "--- FIG x ---" 标签，让模型明确知道图片编号。
 
         Parameters:
         prompt (str): 文本提示
@@ -803,12 +804,20 @@ class LLM:
         content = []
         content.append({"type": "text", "text": prompt})
 
-        for img_base64 in images:
+        for idx, img_base64 in enumerate(images, start=1):
             if not img_base64.startswith('data:'):
                 img_base64 = f"data:image/jpeg;base64,{img_base64}"
             content.append({
+                "type": "text",
+                "text": f"--- FIG {idx} ---"
+            })
+            content.append({
                 "type": "image_url",
                 "image_url": {"url": img_base64}
+            })
+            content.append({
+                "type": "text",
+                "text": f"--- FIG {idx} ---"
             })
 
         messages = [{"role": "user", "content": content}]
@@ -831,7 +840,18 @@ class LLM:
                 proxies=self.proxies,
             )
             response.raise_for_status()
-            result = response.json()
+            
+            # DOC-BEGIN id=llm/query_multimodal/json_parse#1 type=robustness v=1
+            # summary: 安全解析响应 JSON，处理可能的不完整或格式错误响应
+            # intent: 部分 LLM 服务可能返回不完整的 JSON（如截断的响应），直接调用 response.json() 可能抛出 JSONDecodeError。
+            #   使用 response.text 手动解析，并在解析失败时返回详细的错误信息，包括响应状态码和内容片段。
+            try:
+                result = response.json()
+            except json.JSONDecodeError as json_err:
+                error_msg = f"JSON解析失败: {json_err}, 响应状态码: {response.status_code}, 响应内容前500字符: {response.text[:500]}"
+                logger.error(error_msg)
+                return f"Error: {error_msg}"
+            # DOC-END id=llm/query_multimodal/json_parse#1
 
             if 'choices' in result and len(result['choices']) > 0:
                 text = result['choices'][0].get('message', {}).get('content', '')

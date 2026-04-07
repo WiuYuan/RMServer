@@ -27,3 +27,8 @@ aiohttp
 # 实用工具
 python-dotenv
 pyte
+
+
+feedparser
+apscheduler
+pdfservices-sdk==4.2.0

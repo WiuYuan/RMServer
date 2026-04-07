@@ -37,8 +37,7 @@ from src.services.agents import Tool_Calls
 #   FIGURE_BATCH_SIZE控制每次发送给LLM的图片数量，增大可减少API调用次数但增加单次token消耗
 from src.utils.article_blog_generator import generate_blog_from_article_tree, BlogGenConfig, _new_llm, _extract_json_array
 
-# Figure Index 批量生成常量
-FIGURE_BATCH_SIZE = 4  # 每批处理图片数，可调整以平衡性能和效果
+# Figure Index 批量生成逻辑：总图片平均分为3批处理
 # DOC-END id=handlers/articles/blog-generator-imports#1
 from src.services.blog_job_queue import BLOG_JOB_QUEUE
 from bs4 import BeautifulSoup
@@ -250,8 +249,29 @@ async def handle_article_extract_images(data: ArticleExtractImagesReq):
 
         print(f"[extract_images] css_var_map={len(css_var_map)} images={len(images_data)}")
 
+        # 和PDF逻辑统一：过滤保留最大25张，还原原始顺序，重编号
+        valid_images = images_data.copy()
+        MAX_IMAGES = 25
+        original_total = len(valid_images)
+        logger.info(f"[HTML Extract] Filtered images from {original_total} to {min(original_total, MAX_IMAGES)}, kept top {min(original_total, MAX_IMAGES)} large valid images in original article order")
+        
+        if len(valid_images) > MAX_IMAGES:
+            # 按面积降序排序选前25张大图
+            valid_images.sort(key=lambda x: x["width"]*x["height"], reverse=True)
+            valid_images = valid_images[:MAX_IMAGES]
+            # 还原原始文章的出现顺序
+            valid_images.sort(key=lambda x: x["index"])
+        
+        # 重编号，确保index连续不重复
+        for new_idx, img in enumerate(valid_images, 1):
+            ext = img["filename"].split(".")[-1]
+            img["index"] = new_idx
+            img["filename"] = f"figure_{new_idx}.{ext}"
+            img["caption"] = f"Figure {new_idx}"
+        
+        images_data = valid_images
     
-    # 对于HTML路径，不需要output_dir，直接返回
+    # HTML和PDF返回格式完全统一
     return {"ok": True, "article_id": data.article_id, "total": len(images_data), "images": images_data}
 # DOC-END id=handlers/articles/extract-images#1
 
@@ -1081,9 +1101,11 @@ async def handle_article_generate_blog(data: ArticleGenerateBlogReq):
                             filtered_used_images.append(img)
                             break
                 
-                # 计算批次数量
-                total_batches = (len(used_fig_nums_new) + FIGURE_BATCH_SIZE - 1) // FIGURE_BATCH_SIZE
-                logger.info(f"[BlogGen][{data.article_id}] Total {len(used_fig_nums_new)} figures, split into {total_batches} batches (batch_size={FIGURE_BATCH_SIZE})")
+                # 计算批次数量：平均分为3批，每批最少1张
+                total_figs = len(used_fig_nums_new)
+                batch_size = max(1, (total_figs + 2) // 3)  # 向上取整分3批
+                total_batches = (total_figs + batch_size - 1) // batch_size
+                logger.info(f"[BlogGen][{data.article_id}] Total {total_figs} figures, split into {total_batches} batches (batch_size={batch_size})")
 
                 figure_index = []
                 for batch_idx in range(total_batches):

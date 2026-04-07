@@ -1179,6 +1179,10 @@ async def handle_llm_query(data: LLMRequestData):
         if data.system_prompt_mode in ["concise"]:
             base_rules.append("5. Be concise.")
 
+        # Dev模式开启时追加Dev规则
+        if data.is_dev_mode:
+            base_rules.append("7. Dev mode enabled: You can output debug configurations directly runnable in DevTools using the § DevConfig block.")
+
         # DOC-BEGIN id=llm_handlers/system_prompt/script_protocol#1 type=behavior v=1
         # summary: 当存在可见终端时，构造 § Script 协议说明并获取可用终端的 session_id 列表
         # intent: 让 LLM 知道如何输出 § Script 块——用逗号分隔的 session_id 列表 + bash 代码块。
@@ -1262,7 +1266,8 @@ Placeholder rules:
         #   当它们未被定义时，使用 locals().get() 获取默认空字符串，避免 NameError。
         #   script_protocol 有显式初始化（"" 或协议文本），无需额外处理。
         pending_ctx = locals().get("pending_context", "")
-        dev_run = locals().get("dev_run_protocol", "")
+        # 仅Dev模式下注入DevRun协议内容，非Dev模式不添加避免浪费token
+        dev_run = locals().get("dev_run_protocol", "") if data.is_dev_mode else ""
         return "\n".join(base_rules) + "\n" + terminal_context_block + "\n" + code_edit_protocol + "\n" + non_workspace_hint + "\n" + pending_ctx + dev_run + script_protocol
         # DOC-END id=llm_handlers/system_prompt/return_concat#1
 

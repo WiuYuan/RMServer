@@ -112,10 +112,6 @@ class ArticleGenerateBlogReq(BaseModel):
     refine_model_name: Optional[str] = None
     refine_api_key: Optional[str] = None
     refine_llm_url: Optional[str] = None
-    # 后处理LLM配置（单模态，用于精修和概念补充）
-    refine_model_name: Optional[str] = None
-    refine_api_key: Optional[str] = None
-    refine_llm_url: Optional[str] = None
 # DOC-END id=models/requests/article-generate-blog-req#2
 
 

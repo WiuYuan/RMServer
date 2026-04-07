@@ -1222,6 +1222,40 @@ async def handle_llm_query(data: LLMRequestData):
                 "=================================\n"
             )
 
+        # DOC-BEGIN id=llm_handlers/system_prompt/dev_run_protocol#1 type=behavior v=1
+        # summary: 定义Dev运行协议规则，告知大模型如何输出可被DevTools直接识别的调试配置和多LLM占位符
+        # intent: 统一占位符格式，支持单/多LLM场景，与前端DevTools的替换逻辑完全对齐；
+        #   保留全局占位符兼容旧用法，新增带LLM ID的占位符支持多LLM同时调用场景
+        dev_run_protocol = """
+=== DEV RUN PROTOCOL ===
+When you need to output a debug configuration that can be directly run in DevTools, use the § DevConfig block:
+§ DevConfig
+{
+  "action": "<backend_action_name>",
+  "data": {
+    "task_id": "__TASK_ID__",
+    // 单LLM全局占位符（兼容旧用法，对应DevTools当前选中的LLM）
+    "api_key": "__LLM_API_KEY__",
+    "model_name": "__LLM_MODEL_NAME__",
+    "llm_url": "__LLM_URL__",
+    // 多LLM场景占位符（{LLM_ID}替换为真实LLM ID，支持同时调用多个不同LLM）
+    "llm_1_api_key": "__LLM_gpt-4_API_KEY__",
+    "llm_1_model": "__LLM_gpt-4_MODEL_NAME__",
+    "llm_2_api_key": "__LLM_claude-3-opus_API_KEY__",
+    "llm_2_model": "__LLM_claude-3-opus_MODEL_NAME__"
+  }
+}
+§ DevConfig
+
+Placeholder rules:
+1. __TASK_ID__: Auto replaced with current task ID when sending
+2. Global LLM placeholders: __LLM_API_KEY__ / __LLM_MODEL_NAME__ / __LLM_URL__ → replaced with selected LLM's config
+3. Multi-LLM placeholders: __LLM_{LLM_ID}_API_KEY__ / __LLM_{LLM_ID}_MODEL_NAME__ / __LLM_{LLM_ID}_URL__ → replaced with config of LLM with ID {LLM_ID}
+4. All placeholders can be used anywhere in the data JSON (any nested level)
+=================================
+"""
+        # DOC-END id=llm_handlers/system_prompt/dev_run_protocol#1
+
         # DOC-BEGIN id=llm_handlers/system_prompt/return_concat#1 type=behavior v=1
         # summary: 拼接 system_prompt 最终返回值，pending_context 和 dev_run_protocol 作为可选段落（未定义时为空字符串）
         # intent: pending_context/dev_run_protocol 是预留给上下文挂载和开发运行协议的占位变量。

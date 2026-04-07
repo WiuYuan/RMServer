@@ -62,6 +62,10 @@ from src.handlers.think_relay_handlers import (
     handle_think_relay_set, handle_think_relay_get,
     ThinkRelaySetReq, ThinkRelayGetReq,
 )
+from src.handlers.news_handlers import (
+    handle_news_manual_fetch, handle_news_auto_toggle, handle_news_list, handle_news_auto_status
+)
+from src.models.requests import NewsAutoToggleReq, NewsListReq
 
 logging.basicConfig(
     level=logging.INFO,

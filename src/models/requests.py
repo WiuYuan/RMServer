@@ -137,3 +137,15 @@ class ArticleGenerateTTSReq(BaseModel):
 class ArticleDeleteTTSReq(BaseModel):
     article_id: str
 
+
+class NewsManualFetchReq(BaseModel):
+    pass
+
+class NewsAutoToggleReq(BaseModel):
+    enable: bool
+
+class NewsListReq(BaseModel):
+    page: int = 1
+    page_size: int = 20
+    category: str | None = None
+

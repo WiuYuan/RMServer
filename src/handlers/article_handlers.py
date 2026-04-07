@@ -37,6 +37,9 @@ from src.services.agents import Tool_Calls
 #   FIGURE_BATCH_SIZE控制每次发送给LLM的图片数量，增大可减少API调用次数但增加单次token消耗
 from src.utils.article_blog_generator import generate_blog_from_article_tree, BlogGenConfig, _new_llm, _extract_json_array
 
+# Figure Index 批量生成相关常量
+FIGURE_BATCH_SIZE = 3  # 每次发送给LLM的图片数量，增大可减少API调用次数但增加单次token消耗
+
 # Figure Index 批量生成逻辑：总图片平均分为3批处理
 # DOC-END id=handlers/articles/blog-generator-imports#1
 from src.services.blog_job_queue import BLOG_JOB_QUEUE

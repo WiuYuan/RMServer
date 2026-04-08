@@ -503,6 +503,16 @@ async def gateway_endpoint(req: ActionRequest):
             return {"ok": True}
         # DOC-END id=server/task_add_article_context#1
 
+        # 新闻采集模块接口
+        if req.action == "news_manual_fetch":
+            return await handle_news_manual_fetch()
+        if req.action == "news_auto_toggle":
+            return handle_news_auto_toggle(TypeAdapter(NewsAutoToggleReq).validate_python(req.data).enable)
+        if req.action == "news_auto_status":
+            return handle_news_auto_status()
+        # 可选：查询已采集的原始新闻列表
+        if req.action == "news_list":
+            return handle_news_list(TypeAdapter(NewsListReq).validate_python(req.data))
         
     except Exception as e:
         traceback.print_exc()

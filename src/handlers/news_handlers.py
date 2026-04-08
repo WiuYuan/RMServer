@@ -10,15 +10,25 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from src.config import DATA_DIR
 from src.handlers.llm_handlers import handle_llm_query
 from src.models.requests import LLMRequestData
+import logging
+
+logger = logging.getLogger(__name__)
 
 # DOC-BEGIN id=news/config#1 type=config v=1
 # summary: 新闻模块全局配置常量，可根据需求修改
 # intent: 所有可配置项集中管理，避免硬编码；默认值符合MVP阶段需求，不需要额外调整即可跑通
 # 可配置RSS源，格式：[分类, 源名称, RSS地址]
 RSS_SOURCES = [
-    ["科技", "澎湃科技", "https://www.thepaper.cn/list_25842"],
-    ["财经", "财新网", "https://www.caixin.com/rss/finance.xml"],
-    ["国际", "路透中文", "https://cn.reuters.com/rss/CNTopGenNews"],
+    ["Tech", "TechCrunch", "https://techcrunch.com/feed/"],
+    ["Tech", "The Verge", "https://www.theverge.com/rss/index.xml"],
+    ["Tech", "Wired", "https://www.wired.com/feed/rss"],
+    ["Finance", "Bloomberg Markets", "https://www.bloomberg.com/feed/markets.rss"],
+    ["Finance", "Reuters Business", "https://www.reuters.com/business/?rss=true"],
+    ["Global", "BBC World News", "https://feeds.bbci.co.uk/news/world/rss.xml"],
+    ["Global", "CNN Top Stories", "http://rss.cnn.com/rss/cnn_topstories.rss"],
+    ["Global", "AP Top News", "https://apnews.com/rss/topnews"],
+    ["Tech", "Ars Technica", "https://arstechnica.com/feed/"],
+    ["Finance", "Financial Times", "https://www.ft.com/rss/home"]
 ]
 NEWS_STORAGE_PATH = f"{DATA_DIR}/news"
 AUTO_FETCH_INTERVAL = 15  # 自动拉取间隔，单位分钟
@@ -36,16 +46,20 @@ os.makedirs(NEWS_STORAGE_PATH, exist_ok=True)
 if os.path.exists(f"{NEWS_STORAGE_PATH}/auto_config.json"):
     with open(f"{NEWS_STORAGE_PATH}/auto_config.json", "r", encoding="utf-8") as f:
         auto_fetch_enabled = json.load(f).get("enable", False)
+logger.info(f"[News] Loaded initial auto fetch status from local config: {auto_fetch_enabled}")
 
 # DOC-BEGIN id=news/utils/clean_expired#1 type=func v=1
 # summary: 清理超过DATA_EXPIRE_DAYS的旧新闻数据，直接删除过期日期目录
 # intent: 自动执行，不需要人工干预；直接删除目录比逐条删除条目效率高，符合只存10天的需求
 def clean_expired_data():
     expire_date = (datetime.now() - timedelta(days=DATA_EXPIRE_DAYS)).strftime("%Y%m%d")
+    removed_count = 0
     for date_dir in os.listdir(NEWS_STORAGE_PATH):
         if date_dir.isdigit() and date_dir < expire_date and os.path.isdir(f"{NEWS_STORAGE_PATH}/{date_dir}"):
             import shutil
             shutil.rmtree(f"{NEWS_STORAGE_PATH}/{date_dir}")
+            removed_count += 1
+    logger.info(f"[News] Cleaned expired news data before {expire_date}, removed {removed_count} expired date directories")
 # DOC-END id=news/utils/clean_expired#1
 
 # DOC-BEGIN id=news/fetch_rss#1 type=func v=1
@@ -81,8 +95,10 @@ async def fetch_all_rss() -> list:
                             "pub_time": entry.get("published", datetime.now().isoformat()),
                             "fetch_time": datetime.now().isoformat()
                         })
-            except:
+            except Exception as e:
+                logger.warning(f"[News] Failed to fetch RSS source [{source}] <{url}>, error: {str(e)}")
                 continue
+    logger.info(f"[News] RSS fetch completed, got {len(raw_entries)} new unique entries, skipped {len(existed_ids)} existing duplicates")
     return raw_entries
 # DOC-END id=news/fetch_rss#1
 
@@ -114,7 +130,8 @@ async def aggregate_news(raw_entries: list) -> list:
                     **item,
                     "pub_time": datetime.now().isoformat()
                 })
-        except:
+        except Exception as e:
+            logger.error(f"[News] Failed to aggregate news for category {category}, error: {str(e)}", exc_info=True)
             continue
     return processed
 # DOC-END id=news/llm_aggregate#1
@@ -125,23 +142,26 @@ async def aggregate_news(raw_entries: list) -> list:
 async def handle_news_manual_fetch():
     global _fetch_running
     if _fetch_running:
+        logger.warning("[News] Manual fetch requested but already running, rejected")
         return {"ok": False, "msg": "正在拉取中，请稍后再试"}
     _fetch_running = True
+    logger.info("[News] Starting manual news fetch")
     try:
         clean_expired_data()
         raw_entries = await fetch_all_rss()
-        processed = await aggregate_news(raw_entries)
-        # 存储数据
+        # 仅存储原始RSS数据，不调用LLM
         date_str = datetime.now().strftime("%Y%m%d")
         os.makedirs(f"{NEWS_STORAGE_PATH}/{date_str}", exist_ok=True)
         timestamp = int(datetime.now().timestamp())
+        save_path = f"{NEWS_STORAGE_PATH}/{date_str}/raw_{timestamp}.json"
         if raw_entries:
-            with open(f"{NEWS_STORAGE_PATH}/{date_str}/raw_{timestamp}.json", "w", encoding="utf-8") as f:
+            with open(save_path, "w", encoding="utf-8") as f:
                 json.dump(raw_entries, f, ensure_ascii=False, indent=2)
-        if processed:
-            with open(f"{NEWS_STORAGE_PATH}/{date_str}/processed_{timestamp}.json", "w", encoding="utf-8") as f:
-                json.dump(processed, f, ensure_ascii=False, indent=2)
-        return {"ok": True, "raw_count": len(raw_entries), "processed_count": len(processed)}
+        logger.info(f"[News] Manual fetch completed, saved {len(raw_entries)} raw entries")
+        return {"ok": True, "raw_count": len(raw_entries), "save_path": save_path}
+    except Exception as e:
+        logger.error(f"[News] Manual fetch failed, error: {str(e)}", exc_info=True)
+        raise
     finally:
         _fetch_running = False
 # DOC-END id=news/manual_fetch#1
@@ -158,8 +178,11 @@ def handle_news_auto_toggle(enable: bool):
     if enable and not scheduler.running:
         scheduler.add_job(handle_news_manual_fetch, "interval", minutes=AUTO_FETCH_INTERVAL)
         scheduler.start()
+        logger.info(f"[News] Auto fetch enabled, scheduled to run every {AUTO_FETCH_INTERVAL} minutes")
     elif not enable and scheduler.running:
         scheduler.shutdown()
+        logger.info("[News] Auto fetch disabled, scheduler stopped")
+    logger.info(f"[News] Auto fetch status updated to: {auto_fetch_enabled}")
     return {"ok": True, "auto_fetch_enabled": auto_fetch_enabled}
 # DOC-END id=news/auto_toggle#1
 
@@ -179,9 +202,12 @@ def handle_news_list(page: int = 1, page_size: int = 20, category: str = None):
                         items = [i for i in items if i["category"] == category]
                     all_news.extend(items)
     # 分页
+    total = len(all_news)
     start = (page - 1) * page_size
     end = start + page_size
-    return {"ok": True, "total": len(all_news), "list": all_news[start:end]}
+    ret_list = all_news[start:end]
+    logger.info(f"[News] News list query: page={page}, page_size={page_size}, category={category}, total={total}, returned={len(ret_list)} entries")
+    return {"ok": True, "total": total, "list": ret_list}
 # DOC-END id=news/list#1
 
 def handle_news_auto_status():

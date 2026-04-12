@@ -31,11 +31,11 @@ class LLM:
         api_key: str = "",
         llm_url: str = "http://localhost:11434/api/chat",
         model_name: str = "qwen3:8b",
-        remove_think: str = True,
         proxies: dict = None,
         format: str = "ollama",
         system_prompt: str = "",
         ec: Optional[ExternalClient] = None,
+        reasoning_enabled: bool = False,
     ):
         """
         Initialize the LLM instance.
@@ -43,39 +43,17 @@ class LLM:
         Parameters:
         llm_url (str): The URL of the LLM service (e.g., Ollama API endpoint).
         model_name (str): The model to use. Default is "qwen3:32b".
-        remove_think (bool): Whether to remove <think>...</think> sections from the response. Default is True.
+        reasoning_enabled (bool): Whether to enable model reasoning output (for OpenRouter/other models supporting separate reasoning field). Default is False.
         """
         self.api_key = api_key
         self.llm_url = llm_url
         self.model_name = model_name
-        self.remove_think_enabled = remove_think
         self.proxies = proxies or {"http": None, "https": None}
         self.format = format
         self.system_prompt = system_prompt
         self.ec = ec
+        self.reasoning_enabled = reasoning_enabled
 
-    def remove_think(self, text: str) -> str:
-        """
-        Remove <think>...</think> sections from the text and trim surrounding whitespace.
-
-        Parameters:
-        text (str): The input text containing potential <think> sections.
-
-        Returns:
-        str: Cleaned text without <think> blocks.
-        """
-        start_tag = "<think>"
-        end_tag = "</think>"
-
-        start_idx = text.find(start_tag)
-        if start_idx != -1:
-            end_idx = text.find(end_tag, start_idx)
-            if end_idx != -1:
-                # Remove the entire <think> block including the tags
-                text = text[:start_idx] + text[end_idx + len(end_tag) :]
-
-        # Trim whitespace at the start and end
-        return text.strip()
 
     def query(self, prompt: str, verbose: bool = True) -> str:
         # if verbose:
@@ -374,6 +352,8 @@ class LLM:
             "stream": True,
             # "logprobs": True,
         }
+        if self.reasoning_enabled:
+            payload["reasoning"] = {"enabled": True}
         payload = {k: v for k, v in payload.items() if v is not None}
         # print(messages)
 
@@ -452,8 +432,12 @@ class LLM:
                         # raise
                     if "choices" in chunk and len(chunk["choices"]) > 0:
                         delta = chunk["choices"][0].get("delta", {})
+                        token = None
+                        reasoning_token = None
                         if "content" in delta:
                             token = delta["content"]
+                        if "reasoning" in delta:
+                            reasoning_token = delta["reasoning"]
 
                     if token:
                         text_accumulate += token
@@ -467,10 +451,7 @@ class LLM:
                             #         },
                             #     }
                             # )
-
-        # Optionally remove <think> blocks
-        if self.remove_think_enabled:
-            text_accumulate = self.remove_think(text_accumulate)
+                    # 处理推理内容
         return text_accumulate
 
     def _format_arguments_for_display(self, func_name: str, args: dict) -> str:
@@ -534,6 +515,8 @@ class LLM:
             "stream": True,
             # "logprobs": True,
         }
+        if self.reasoning_enabled:
+            payload["reasoning"] = {"enabled": True}
         payload = {k: v for k, v in payload.items() if v is not None}
 
         text_accumulate = ""
@@ -604,7 +587,7 @@ class LLM:
                                 {
                                     "type": "llm_info",
                                     "data": {
-                                        "content": "⧖",
+                                        "content": "",
                                     },
                                 }
                             )
@@ -614,8 +597,12 @@ class LLM:
                         # raise
                     if "choices" in chunk and len(chunk["choices"]) > 0:
                         delta = chunk["choices"][0].get("delta", {})
+                        token = None
+                        reasoning_token = None
                         if "content" in delta:
                             token = delta["content"]
+                        if "reasoning" in delta:
+                            reasoning_token = delta["reasoning"]
                         if "tool_calls" in delta:
                             tool_calls.extend(delta["tool_calls"])
                             # print(chunk)
@@ -632,10 +619,18 @@ class LLM:
                                 }
                             )
                             print(token.replace("\n", "\n    "), end="", flush=True)
-
-        # Optionally remove <think> blocks
-        if self.remove_think_enabled:
-            text_accumulate = self.remove_think(text_accumulate)
+                    # 处理推理内容，单独发送给前端区分展示
+                    if reasoning_token and verbose and self.ec is not None:
+                        self.ec.send_message(
+                            {
+                                "type": "llm_reasoning",
+                                "data": {
+                                    "content": reasoning_token,
+                                },
+                            }
+                        )
+                        # 控制台打印推理内容用灰色标识方便区分
+                        print(reasoning_token.replace('\n', '\n    '), end="", flush=True)
 
         if self.format == "openai":
             grouped = defaultdict(list)
@@ -831,6 +826,8 @@ class LLM:
             "messages": messages,
             "stream": False,
         }
+        if self.reasoning_enabled:
+            payload["reasoning"] = {"enabled": True}
 
         try:
             response = requests.post(
@@ -855,8 +852,6 @@ class LLM:
 
             if 'choices' in result and len(result['choices']) > 0:
                 text = result['choices'][0].get('message', {}).get('content', '')
-                if self.remove_think_enabled:
-                    text = self.remove_think(text)
                 if verbose:
                     print(f"[LLM multimodal] response length={len(text)}")
                 return text

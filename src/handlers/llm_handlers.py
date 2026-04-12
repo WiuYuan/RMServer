@@ -22,7 +22,7 @@ async def handle_llm_simple_query(data: LLMRequestData):
     result_queue = queue.Queue()
     ec = ExternalClient(out_queue=result_queue)
     try:
-        llm = LLM(api_key=data.api_key, llm_url=data.llm_url, model_name=data.model_name, format="openai", ec=ec)
+        llm = LLM(api_key=data.api_key, llm_url=data.llm_url, model_name=data.model_name, format="openai", ec=ec, reasoning_enabled=data.reasoning_enabled)
         loop = asyncio.get_running_loop()
         loop.run_in_executor(None, llm.query, data.question, True)
     except Exception:
@@ -45,12 +45,23 @@ async def handle_llm_simple_query(data: LLMRequestData):
             if isinstance(item, dict):
                 msg_type = item.get("type", "")
                 if msg_type == "image":
-                    yield "§IMG§" + json.dumps(item["data"], ensure_ascii=False)
+                    yield json.dumps({"type": "image", "data": item["data"]}, ensure_ascii=False) + "\n"
                 else:
                     c = item.get("data", {}).get("content", "")
                     if c:
-                        yield c
-    return StreamingResponse(event_generator(), media_type="text/plain; charset=utf-8")
+                        if item.get("type") == "llm_reasoning":
+                            yield json.dumps({"type": "llm_reasoning", "content": c}, ensure_ascii=False) + "\n"
+                        else:
+                            yield json.dumps({"type": "llm_response", "content": c}, ensure_ascii=False) + "\n"
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",   # 改成 SSE 标准 MIME
+        headers={
+            "X-Accel-Buffering": "no",    # 关键：告诉 nginx 不要缓冲
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
     # DOC-END id=llm_handlers/event_generator#1
 
 async def handle_task_get_terminal_status(data: TaskGetTerminalStatusReq):
@@ -1004,7 +1015,7 @@ async def handle_llm_query(data: LLMRequestData):
                 "    return a * b\n"
                 "```\n\n\n"
                 "Notice previous patch may be replaced by '[EDIT_PROTOCOL_TRIMMED]' (in order to save context), and previous patch may fail or success.\n"
-                "But you must output correct patch instead of '[EDIT_PROTOCOL_TRIMMED]'.\n"
+                "But you **MUST** output correct patch instead of '[EDIT_PROTOCOL_TRIMMED]'.\n"
                 "6. My project code is NOT available online or in any public repository. "
                 "If you need to see any source code (e.g. src/services/xxx.py), "
                 "do NOT guess or fabricate it — ask me directly and I will pin it for you."
@@ -1176,11 +1187,224 @@ async def handle_llm_query(data: LLMRequestData):
                     "§ Replace (abc123)\n"
                 )
 
-        if data.system_prompt_mode in ["concise"]:
+        # DOC-BEGIN id=llm_handlers/system_prompt/mode_branch#1 type=behavior v=1
+        # summary: 根据 system_prompt_mode 设置 concise 规则，并控制 code_edit_protocol 注入：
+        #   concise 模式不注入任何编辑协议；code_edit 注入 Start/End/Replace；bulk_code_edit 在 workspace 中额外注入 Move/Tab
+        # intent: 三种模式给用户灵活选择——concise 用于纯对话不编辑代码的场景（节省 token），
+        #   code_edit 用于常规单文件编辑，bulk_code_edit 用于批量移动/缩进等进阶编辑。
+        #   workspace 模式下协议由上方的 workspace 覆盖逻辑处理，此处只需检查 concise 清空。
+        if data.system_prompt_mode in ["concise", "code_edit", "bulk_code_edit"]:
             base_rules.append("5. Be concise.")
-
-        # Dev模式开启时追加Dev规则
-        if data.is_dev_mode:
+        if data.system_prompt_mode in ["concise"]:
+            if not is_workspace_bound:
+                code_edit_protocol = ""
+        elif data.system_prompt_mode == "bulk_code_edit":
+            # Move 和 Tab 协议无论 workspace 模式都追加到 code_edit_protocol 末尾
+            # DOC-BEGIN id=llm_handlers/system_prompt/move_protocol#1 type=behavior v=1
+            # summary: Move 协议说明——使用 § Start/End 标记源代码范围，§ Move 标记目标锚点，
+            #   将源代码从原位置剪切后粘贴到目标锚点下方
+            # intent: 格式与 § Replace 保持一致（Start/End），便于 LLM 统一理解编辑协议。
+            #   必须提供完整示例避免 LLM 误解语法。
+            move_tab_protocol = (
+                "\n=== MOVE PROTOCOL ===\n"
+                "Move code blocks to a new location using the following format.\n"
+                "Use § Start/End to mark the SOURCE code to move, and § Move to mark the TARGET anchor.\n"
+                "IMPORTANT: src_hash_value and tgt_hash_value CAN BE DIFFERENT — this enables cross-file moves.\n\n"
+                "§ Start (src_hash_value)\n"
+                "```[language identifier]\n"
+                "[~2-3 lines of existing code where the move begins, must be uniquely matched]\n"
+                "```\n"
+                "§ Start (src_hash_value)\n\n"
+                "§ End (src_hash_value)\n"
+                "```[language identifier]\n"
+                "[~2-3 lines of existing code where the move ends, must be uniquely matched]\n"
+                "```\n"
+                "§ End (src_hash_value)\n\n"
+                "§ Move (tgt_hash_value)\n"
+                "```[language identifier]\n"
+                "[anchor code — moved code will be inserted BELOW this block]\n"
+                "```\n"
+                "§ Move (tgt_hash_value)\n\n"
+                "SEMANTICS:\n"
+                "- § Start (src_hash_value) / § End (src_hash_value): marks the SOURCE code range (code to be moved) in the file identified by src_hash_value.\n"
+                "- § Move (tgt_hash_value): marks the TARGET anchor in a (possibly different) file identified by tgt_hash_value.\n"
+                "- src_hash_value and tgt_hash_value CAN be the same (same-file move) or different (cross-file move).\n"
+                "- The code between Start and End is CUT from its original location (source file).\n"
+                "- Then PASTED below the Move anchor code (target file).\n"
+                "- The exact matching snippets should be ~2-3 lines for reliable unique matching.\n\n"
+                "EXAMPLE — Move `validate_input` and `hash_password` from source file (src_hash=abc123) to target file (tgt_hash=def456):\n\n"
+                "Suppose the pinned source file (hash = abc123) contains:\n\n"
+                "```python\n"
+                "import hashlib\n"
+                "from typing import Optional\n"
+                "\n"
+                "def log_action(action: str, user: str) -> None:\n"
+                "    print(f'[{action}] {user}')\n"
+                "\n"
+                "def validate_input(username: str, password: str) -> bool:\n"
+                "    if not username or len(username) < 3:\n"
+                "        return False\n"
+                "    if not password or len(password) < 8:\n"
+                "        return False\n"
+                "    return True\n"
+                "\n"
+                "def hash_password(password: str, salt: str = 'default') -> str:\n"
+                "    combined = f'{salt}:{password}'\n"
+                "    return hashlib.sha256(combined.encode()).hexdigest()\n"
+                "\n"
+                "def create_user(username: str, password: str) -> dict:\n"
+                "    log_action('create_user', username)\n"
+                "    return {'username': username, 'active': True}\n"
+                "\n"
+                "def delete_user(username: str) -> bool:\n"
+                "    log_action('delete_user', username)\n"
+                "    return True\n"
+                "```\n\n"
+                "Suppose the pinned target file (hash = def456) contains:\n\n"
+                "```python\n"
+                "def some_function():\n"
+                "    pass\n"
+                "\n"
+                "def another_function():\n"
+                "    pass\n"
+                "```\n\n"
+                "To move `validate_input` and `hash_password` from source (abc123) to after `some_function` in target (def456):\n\n"
+                "§ Start (abc123)\n"
+                "```python\n"
+                "def validate_input(username: str, password: str) -> bool:\n"
+                "    if not username or len(username) < 3:\n"
+                "        return False\n"
+                "```\n"
+                "§ Start (abc123)\n\n"
+                "§ End (abc123)\n"
+                "```python\n"
+                "def hash_password(password: str, salt: str = 'default') -> str:\n"
+                "    combined = f'{salt}:{password}'\n"
+                "    return hashlib.sha256(combined.encode()).hexdigest()\n"
+                "```\n"
+                "§ End (abc123)\n\n"
+                "§ Move (def456)\n"
+                "```python\n"
+                "def some_function():\n"
+                "    pass\n"
+                "```\n"
+                "§ Move (def456)\n\n"
+                "RESULT:\n"
+                "Source file (hash=abc123) after move:\n"
+                "```python\n"
+                "import hashlib\n"
+                "from typing import Optional\n"
+                "\n"
+                "def log_action(action: str, user: str) -> None:\n"
+                "    print(f'[{action}] {user}')\n"
+                "\n"
+                "def create_user(username: str, password: str) -> dict:\n"
+                "    log_action('create_user', username)\n"
+                "    return {'username': username, 'active': True}\n"
+                "\n"
+                "def delete_user(username: str) -> bool:\n"
+                "    log_action('delete_user', username)\n"
+                "    return True\n"
+                "```\n\n"
+                "Target file (hash=def456) after move:\n"
+                "```python\n"
+                "def some_function():\n"
+                "    pass\n"
+                "\n"
+                "def validate_input(username: str, password: str) -> bool:\n"
+                "    if not username or len(username) < 3:\n"
+                "        return False\n"
+                "    if not password or len(password) < 8:\n"
+                "        return False\n"
+                "    return True\n"
+                "\n"
+                "def hash_password(password: str, salt: str = 'default') -> str:\n"
+                "    combined = f'{salt}:{password}'\n"
+                "    return hashlib.sha256(combined.encode()).hexdigest()\n"
+                "\n"
+                "def another_function():\n"
+                "    pass\n"
+                "```\n"
+                "\n=== TAB PROTOCOL ===\n"
+                "Adjust indentation for code blocks using the following format.\n"
+                "Use § Start/End to mark the code block, and § Tab N to specify indentation change.\n\n"
+                "§ Start (src_hash_value)\n"
+                "```[language identifier]\n"
+                "[~2-3 lines of existing code where the tab block begins, must be uniquely matched]\n"
+                "```\n"
+                "§ Start (src_hash_value)\n\n"
+                "§ End (src_hash_value)\n"
+                "```[language identifier]\n"
+                "[~2-3 lines of existing code where the tab block ends, must be uniquely matched]\n"
+                "```\n"
+                "§ End (src_hash_value)\n\n"
+                "§ Tab (src_hash_value)\n"
+                "```[language identifier]\n"
+                "N\n"
+                "```\n"
+                "§ Tab (src_hash_value)\n\n"
+                "SEMANTICS:\n"
+                "- § Start (src_hash_value) / § End (src_hash_value): marks the code block to adjust indentation\n"
+                "- N: integer (positive = increase indent, negative = decrease indent)\n"
+                "- Applies N levels of indentation change to the entire Start/End block\n"
+                "- The exact matching snippets should be ~2-3 lines for reliable unique matching\n\n"
+                "EXAMPLE — Decrease indent of nested `if/elif/else` block:\n\n"
+                "Suppose the pinned file (hash = abc123) contains:\n\n"
+                "```python\n"
+                "class ConfigValidator:\n"
+                "    def validate(self, config: dict) -> list:\n"
+                "        errors = []\n"
+                "        if 'host' not in config:\n"
+                "            errors.append('Missing host')\n"
+                "            errors.append('Check config file')\n"
+                "        elif config['host'] == '':\n"
+                "            errors.append('Empty host')\n"
+                "            errors.append('Set a valid hostname')\n"
+                "        else:\n"
+                "            errors.append('Host OK')\n"
+                "            errors.append('Proceeding...')\n"
+                "        return errors\n"
+                "```\n\n"
+                "To decrease indent of the entire if/elif/else body by 1 level:\n\n"
+                "§ Start (abc123)\n"
+                "```python\n"
+                "        errors.append('Missing host')\n"
+                "            errors.append('Check config file')\n"
+                "        elif config['host'] == '':\n"
+                "```\n"
+                "§ Start (abc123)\n\n"
+                "§ End (abc123)\n"
+                "```python\n"
+                "        else:\n"
+                "            errors.append('Host OK')\n"
+                "            errors.append('Proceeding...')\n"
+                "```\n"
+                "§ End (abc123)\n\n"
+                "§ Tab (abc123)\n"
+                "```text\n"
+                "-1\n"
+                "```\n"
+                "§ Tab (abc123)\n\n"
+                "RESULT:\n"
+                "```python\n"
+                "class ConfigValidator:\n"
+                "    def validate(self, config: dict) -> list:\n"
+                "        errors = []\n"
+                "    if 'host' not in config:\n"
+                "        errors.append('Missing host')\n"
+                "        errors.append('Check config file')\n"
+                "    elif config['host'] == '':\n"
+                "        errors.append('Empty host')\n"
+                "        errors.append('Set a valid hostname')\n"
+                "    else:\n"
+                "        errors.append('Host OK')\n"
+                "        errors.append('Proceeding...')\n"
+                "        return errors\n"
+                "```\n"
+            )
+            # DOC-END id=llm_handlers/system_prompt/move_protocol#1
+            code_edit_protocol += move_tab_protocol
+        # Dev模式开启时追加Dev规则        if data.is_dev_mode:
             base_rules.append("7. Dev mode enabled: You can output debug configurations directly runnable in DevTools using the § DevConfig block.")
 
         # DOC-BEGIN id=llm_handlers/system_prompt/script_protocol#1 type=behavior v=1
@@ -1272,7 +1496,7 @@ Placeholder rules:
         # DOC-END id=llm_handlers/system_prompt/return_concat#1
 
     try:
-        llm = LLM(api_key=data.api_key, llm_url=data.llm_url, model_name=data.model_name, format="openai", ec=ec)
+        llm = LLM(api_key=data.api_key, llm_url=data.llm_url, model_name=data.model_name, format="openai", ec=ec, reasoning_enabled=data.reasoning_enabled)
         loop = asyncio.get_running_loop()
         fn = partial(
             llm.query_with_tools,
@@ -1319,13 +1543,11 @@ Placeholder rules:
         traceback.print_exc()
         
     # DOC-BEGIN id=llm_handlers/event_generator_with_image#1 type=core v=1
-    # summary: SSE 事件生成器——从 result_queue 逐条取出消息，区分纯文本 (type=llm_info) 和
-    #   结构化事件 (type=image)，分别以不同格式 yield 给前端
-    # intent: 原有协议只输出纯文本（content 字符串直接 yield），无法传递图片等二进制数据。
-    #   扩展后约定：type="image" 事件以 "§IMG§" + JSON 的格式 yield，
-    #   前端通过检测此前缀区分文本和结构化事件。选择内联标记而非切换 media_type，
-    #   是因为 SSE 流中文本和图片事件交替出现，不能中途改 Content-Type。
-    #   "§IMG§" 前缀足够独特，不会与正常 LLM 输出冲突。
+    # summary: SSE 事件生成器——从 result_queue 逐条取出消息，统一输出 JSON 格式事件（以换行符分隔），
+    #   前端通过 JSON.parse + type 字段分发到不同处理逻辑
+    # intent: 所有事件统一为 JSON 格式，包含 type 字段区分 llm_response、llm_reasoning、image。
+    #   每个事件后追加 \n 换行符，方便前端按行分割解析。
+    #   原有 §IMG§ 前缀方案已废弃，改为标准 JSON 事件。
     async def event_generator():
         while True:
             item = await loop.run_in_executor(None, result_queue.get)
@@ -1334,10 +1556,21 @@ Placeholder rules:
             if isinstance(item, dict):
                 msg_type = item.get("type", "")
                 if msg_type == "image":
-                    yield "§IMG§" + json.dumps(item["data"], ensure_ascii=False)
+                    yield json.dumps({"type": "image", "data": item["data"]}, ensure_ascii=False) + "\n"
                 else:
                     c = item.get("data", {}).get("content", "")
                     if c:
-                        yield c
-    return StreamingResponse(event_generator(), media_type="text/plain; charset=utf-8")
+                        if item.get("type") == "llm_reasoning":
+                            yield json.dumps({"type": "llm_reasoning", "content": c}, ensure_ascii=False) + "\n"
+                        else:
+                            yield json.dumps({"type": "llm_response", "content": c}, ensure_ascii=False) + "\n"
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",   # 改成 SSE 标准 MIME
+        headers={
+            "X-Accel-Buffering": "no",    # 关键：告诉 nginx 不要缓冲
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
     # DOC-END id=llm_handlers/event_generator_with_image#1

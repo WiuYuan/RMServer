@@ -84,6 +84,7 @@ class LLMRequestData(BaseModel):
     pinned_codes: Optional[list[PinnedCode]] = []
     is_dev_mode: Optional[bool] = False
     available_llms: Optional[list[AvailableLLM]] = []
+    reasoning_enabled: Optional[bool] = False
 
 class ActionRequest(BaseModel):
     action: str

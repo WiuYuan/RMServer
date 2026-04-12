@@ -1,7 +1,8 @@
 # server.py
 import uvicorn
 import json as _json
-from fastapi import FastAPI, HTTPException, Header, Depends 
+from fastapi import FastAPI, HTTPException, Header, Depends
+
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from src.services.agents import Tool_Calls
@@ -63,7 +64,8 @@ from src.handlers.think_relay_handlers import (
     ThinkRelaySetReq, ThinkRelayGetReq,
 )
 from src.handlers.news_handlers import (
-    handle_news_manual_fetch, handle_news_auto_toggle, handle_news_list, handle_news_auto_status
+    handle_news_manual_fetch, handle_news_auto_toggle, handle_news_list, handle_news_auto_status,
+    handle_news_llm_score, handle_news_score, handle_news_html, handle_news_categories
 )
 from src.models.requests import NewsAutoToggleReq, NewsListReq
 
@@ -512,8 +514,73 @@ async def gateway_endpoint(req: ActionRequest):
             return handle_news_auto_status()
         # 可选：查询已采集的原始新闻列表
         if req.action == "news_list":
-            return handle_news_list(TypeAdapter(NewsListReq).validate_python(req.data))
-        
+            return handle_news_list(**req.data)
+        if req.action == "news_llm_score":
+            return await handle_news_llm_score(
+                model_name=req.data.get("model_name"),
+                api_key=req.data.get("api_key"),
+                llm_url=req.data.get("llm_url"),
+            )
+        if req.action == "news_score":
+            return handle_news_score(
+                req.data.get("date_str"),
+                req.data.get("entry_id"),
+                req.data.get("human_score"),
+            )
+        if req.action == "news_html":
+            return handle_news_html(
+                req.data.get("date_str"),
+                req.data.get("entry_id"),
+            )
+        if req.action == "news_categories":
+            return handle_news_categories()
+
+        # === Book Reading Module ===
+        from src.models.book_requests import (
+            BookListReq, BookGetReq, BookDeleteReq,
+            BookGetPagesReq, BookGenerateAnnotationReq, BookGetAnnotationReq,
+        )
+        from src.handlers.book_handlers import (
+            handle_book_scan, handle_book_list, handle_book_get, handle_book_delete,
+            handle_book_get_pages, handle_book_generate_annotation,
+            handle_book_get_annotation,
+        )
+
+        if req.action == "book_scan":
+            return handle_book_scan()
+
+        if req.action == "book_list":
+            return handle_book_list()
+
+        if req.action == "book_get":
+            return handle_book_get(
+                TypeAdapter(BookGetReq).validate_python(req.data).book_id
+            )
+
+        if req.action == "book_delete":
+            return handle_book_delete(
+                TypeAdapter(BookDeleteReq).validate_python(req.data).book_id
+            )
+
+        if req.action == "book_get_pages":
+            data = TypeAdapter(BookGetPagesReq).validate_python(req.data)
+            return handle_book_get_pages(data.book_id, data.pages)
+
+        if req.action == "book_generate_annotation":
+            data = TypeAdapter(BookGenerateAnnotationReq).validate_python(req.data)
+            return await handle_book_generate_annotation(
+                book_id=data.book_id,
+                pages=data.pages,
+                model_name=data.model_name,
+                api_key=data.api_key,
+                llm_url=data.llm_url,
+            )
+
+        if req.action == "book_get_annotation":
+            data = TypeAdapter(BookGetAnnotationReq).validate_python(req.data)
+            return handle_book_get_annotation(data.book_id)
+
+
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

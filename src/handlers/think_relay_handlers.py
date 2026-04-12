@@ -6,14 +6,14 @@ import time
 from fastapi import HTTPException
 
 from src.utils.file_utils import write_json_file_atomic
+from src.config import DATA_DIR
 
-# DOC-BEGIN id=think-relay/file-path#1 type=config v=1
-# summary: Think relay 数据文件路径，存放在项目根 data/ 目录下
-# intent: 统一放在 DATA_DIR 下，避免散落；与 relay_current_plan 平级
-THINK_RELAY_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    "data", "think_relay.json"
-)
+# DOC-BEGIN id=think-relay/file-path#1 type=config v=2
+# summary: Think relay 数据文件路径，存放在项目根 data/think_relay/ 目录下
+# intent: 统一放在 DATA_DIR 下的独立子目录，与news类似，避免散落；同时修复原来语法错误
+THINK_RELAY_DIR = os.path.join(DATA_DIR, "think_relay")
+os.makedirs(THINK_RELAY_DIR, exist_ok=True)
+THINK_RELAY_FILE = os.path.join(THINK_RELAY_DIR, "think_relay.json")
 # DOC-END id=think-relay/file-path#1
 
 

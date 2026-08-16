@@ -36,6 +36,7 @@ class LLM:
         system_prompt: str = "",
         ec: Optional[ExternalClient] = None,
         reasoning_enabled: bool = False,
+        max_tokens: int = 16384,
     ):
         """
         Initialize the LLM instance.
@@ -53,6 +54,7 @@ class LLM:
         self.system_prompt = system_prompt
         self.ec = ec
         self.reasoning_enabled = reasoning_enabled
+        self.max_tokens = max_tokens
 
 
     def query(self, prompt: str, verbose: bool = True) -> str:
@@ -261,11 +263,20 @@ class LLM:
                 }
             ]
 
+# DOC-BEGIN id=llm/query_with_tools/ollama-call-adapt#1 type=compat v=1
+# summary: Ollama格式tool_call适配：修正字段路径错误，保留原call对象用于获取tool_call_id
+# intent: 原代码在ollama分支将call重赋值为call["function"]后，后续无法获取原call顶层的id字段，且args路径错误导致KeyError；
+#   保留原始call对象(raw_call)用于取id，根据format类型动态适配args的获取路径；ollama返回的arguments已为dict，无需强制loads，仅保留字符串兼容逻辑
             for call in tool_calls:
+                raw_call = copy.deepcopy(call)
                 if self.format == "ollama":
                     call = call["function"]
                 func_name = call["name"]
-                args = call["function"]["arguments"]
+                if self.format == "ollama":
+                    args = call["arguments"]
+                else:
+                    args = call["function"]["arguments"]
+# DOC-END id=llm/query_with_tools/ollama-call-adapt#1
 
                 if func_name in func_dict:
                     if isinstance(args, str):
@@ -315,7 +326,8 @@ class LLM:
                     {
                         "role": "tool",
                         "name": func_name,
-                        "tool_call_id": call.get("id", ""),
+                        # 从原始call对象获取id，ollama的id在tool_call顶层而非function层
+                        "tool_call_id": raw_call.get("id", ""),
                         "content": str(result),
                     }
                 )
@@ -350,11 +362,22 @@ class LLM:
             "model": self.model_name,
             "messages": messages,
             "stream": True,
+            "max_tokens": self.max_tokens,
             # "logprobs": True,
         }
-        if self.reasoning_enabled:
-            payload["reasoning"] = {"enabled": True}
+        # 根据不同format适配思考开关参数
+        if self.format == "openai":
+            payload["reasoning"] = {"enabled": self.reasoning_enabled}
+        elif self.format == "ollama":
+            payload["think"] = self.reasoning_enabled
         payload = {k: v for k, v in payload.items() if v is not None}
+        # DOC-BEGIN id=llm/volc_doubao_disable_reasoning#1 type=behavior v=1
+        # summary: 火山引擎豆包API专属逻辑：关闭思考模式时注入thinking.disabled参数
+        # intent: 当llm_url是火山方舟地址且reasoning_enabled=False时，添加该参数强制关闭思考输出，
+        #   仅返回最终回答，不返回reasoning_content字段，与普通模型行为对齐
+        if not self.reasoning_enabled and 'ark.cn-beijing.volces.com' in self.llm_url:
+            payload["thinking"] = {"type": "disabled"}
+        # DOC-END id=llm/volc_doubao_disable_reasoning#1
         # print(messages)
 
         text_accumulate = ""
@@ -394,16 +417,41 @@ class LLM:
             proxies=self.proxies,
             stream=True,
         ) as response:
+            # DOC-BEGIN id=llm/query_messages/ollama-line-buffer#1 type=robustness v=1
+            # summary: 新增行缓冲解决Ollama流式响应被TCP拆包导致JSON解析失败问题
+            # intent: 网络传输中SSE行可能被拆分为多个TCP包，iter_lines()会返回不完整的JSON片段；
+            #   每次将新片段拼到缓冲中，解析成功则清空缓冲，失败则保留等待下一段拼接，完全避免截断导致的解析错误
+            line_buffer = ""
+            # DOC-END id=llm/query_messages/ollama-line-buffer#1
             for line in response.iter_lines():
                 if not line:
                     continue
                 # print(line)
                 line_str = line.decode("utf-8").strip()
+                line_buffer += line_str
                 if self.format == "ollama":
-                    chunk = json.loads(line_str)
+                    # 兼容带data:前缀的Ollama SSE响应
+                    current_line = line_buffer
+                    if current_line.startswith("data: "):
+                        current_line = current_line[len("data: "):].strip()
+                    if not current_line:
+                        line_buffer = ""
+                        continue
+                    try:
+                        chunk = json.loads(current_line)
+                        # 解析成功清空缓冲
+                        line_buffer = ""
+                    except json.JSONDecodeError:
+                        # 解析失败说明行被截断，保留缓冲等待下一行拼接
+                        continue
                     token = None
-                    if "message" in chunk and "content" in chunk["message"]:
-                        token = chunk["message"]["content"]
+                    reasoning_token = None
+                    if "message" in chunk:
+                        msg = chunk["message"]
+                        if "content" in msg:
+                            token = msg["content"]
+                        if "thinking" in msg:
+                            reasoning_token = msg["thinking"]
 
                     if token:
                         text_accumulate += token
@@ -417,6 +465,18 @@ class LLM:
                             #         },
                             #     }
                             # )
+                    # 处理推理内容，单独发送给前端区分展示
+                    if reasoning_token and verbose and self.ec is not None:
+                        self.ec.send_message(
+                            {
+                                "type": "llm_reasoning",
+                                "data": {
+                                    "content": reasoning_token,
+                                },
+                            }
+                        )
+                        # 控制台打印推理内容用灰色标识方便区分
+                        print(reasoning_token.replace('\n', '\n    '), end="", flush=True)
 
                 if self.format == "openai":
                     line_str = line_str[len("data: ") :]
@@ -438,6 +498,8 @@ class LLM:
                             token = delta["content"]
                         if "reasoning" in delta:
                             reasoning_token = delta["reasoning"]
+                        if "reasoning_content" in delta:
+                            reasoning_token = delta["reasoning_content"]
 
                     if token:
                         text_accumulate += token
@@ -451,7 +513,18 @@ class LLM:
                             #         },
                             #     }
                             # )
-                    # 处理推理内容
+                    # 处理推理内容，单独发送给前端区分展示
+                    if reasoning_token and verbose and self.ec is not None:
+                        self.ec.send_message(
+                            {
+                                "type": "llm_reasoning",
+                                "data": {
+                                    "content": reasoning_token,
+                                },
+                            }
+                        )
+                        # 控制台打印推理内容用灰色标识方便区分
+                        print(reasoning_token.replace('\n', '\n    '), end="", flush=True)
         return text_accumulate
 
     def _format_arguments_for_display(self, func_name: str, args: dict) -> str:
@@ -499,25 +572,39 @@ class LLM:
         tools = tools or []
         tools = self.create_tools(tools)
 
+        # DOC-BEGIN id=llm/query_messages_with_tools/args-format-adapt#1 type=compat v=1
+        # summary: 历史消息tool_call参数格式适配：仅openai格式需要将非字符串类型的arguments转为JSON字符串，ollama格式保留原生dict类型
+        # intent: Ollama 0.30.8+原生支持arguments为dict类型，强行转字符串会导致后续tool消息回填格式不兼容报错；仅对openai格式执行转换，与上游API要求对齐
         for msg in messages:
             if "tool_calls" in msg:
                 for call in msg["tool_calls"]:
                     if "function" in call and "arguments" in call["function"]:
                         args = call["function"]["arguments"]
-                        if not isinstance(args, str):
-                            # 只有在 dict/非 str 的时候才转为 JSON 字符串
+                        if self.format == "openai" and not isinstance(args, str):
+                            # 仅openai格式需转JSON字符串
                             call["function"]["arguments"] = json.dumps(args)
+        # DOC-END id=llm/query_messages_with_tools/args-format-adapt#1
 
         payload = {
             "model": self.model_name,
             "messages": messages,
             "tools": tools,
             "stream": True,
+            "max_tokens": self.max_tokens
             # "logprobs": True,
         }
-        if self.reasoning_enabled:
-            payload["reasoning"] = {"enabled": True}
+        # 根据不同format适配思考开关参数
+        if self.format == "openai":
+            payload["reasoning"] = {"enabled": self.reasoning_enabled}
+        elif self.format == "ollama":
+            payload["think"] = self.reasoning_enabled
         payload = {k: v for k, v in payload.items() if v is not None}
+        # DOC-BEGIN id=llm/volc_doubao_disable_reasoning#2 type=behavior v=1
+        # summary: 火山引擎豆包API专属逻辑：工具调用场景下关闭思考模式
+        # intent: 同id=llm/volc_doubao_disable_reasoning#1，覆盖带工具调用的请求场景
+        if not self.reasoning_enabled and 'ark.cn-beijing.volces.com' in self.llm_url:
+            payload["thinking"] = {"type": "disabled"}
+        # DOC-END id=llm/volc_doubao_disable_reasoning#2
 
         text_accumulate = ""
 
@@ -542,6 +629,11 @@ class LLM:
             proxies=self.proxies,
             stream=True,
         ) as response:
+            # DOC-BEGIN id=llm/query_messages_with_tools/ollama-line-buffer#1 type=robustness v=1
+            # summary: 新增行缓冲解决Ollama工具调用场景下流式响应被TCP拆包导致JSON解析失败问题
+            # intent: 与query_messages的行缓冲逻辑一致，工具调用场景下响应更长，拆包概率更高，必须做截断兼容
+            line_buffer = ""
+            # DOC-END id=llm/query_messages_with_tools/ollama-line-buffer#1
             for line in response.iter_lines():
                 if tool_runner is not None:
                     _, should_stop = tool_runner(None, None)
@@ -552,15 +644,42 @@ class LLM:
                     continue
                 # print(line)
                 line_str = line.decode("utf-8").strip()
+                line_buffer += line_str
+# DOC-BEGIN id=llm/query_messages_with_tools/ollama-stream-process#1 type=compat v=2
+# summary: Ollama流式返回解析：新增行缓冲机制解决TCP分块导致JSON截断问题，支持content、thinking（推理内容）、tool_calls字段的处理
+# intent: 部分网络环境下SSE响应会被TCP拆分为多个包，iter_lines()会拿到不完整的JSON行导致解析失败；新增line_buffer拼接截断行，解析成功后清空缓冲，失败则保留等待下一行拼接
+#   Qwen3.5的Ollama返回将推理内容放在独立的thinking字段，单独抽取转发给前端，与openai的reasoning逻辑对齐；
+#   tool_calls是一次性完整返回（非增量碎片），无需按index拼合；保留与openai分支相同的输出格式，确保上层逻辑无感知
                 if self.format == "ollama":
-                    chunk = json.loads(line_str)
+                    current_line = line_buffer
+                    # 兼容带data:前缀的Ollama SSE响应
+                    if current_line.startswith("data: "):
+                        current_line = current_line[len("data: "):].strip()
+                    if not current_line:
+                        line_buffer = ""
+                        continue
+                    try:
+                        chunk = json.loads(current_line)
+                        # 解析成功清空缓冲
+                        line_buffer = ""
+                    except json.JSONDecodeError:
+                        # 解析失败说明行被截断，保留缓冲等待下一行拼接
+                        continue
+# DOC-END id=llm/query_messages_with_tools/ollama-stream-process#1
                     token = None
-                    if "message" in chunk and "content" in chunk["message"]:
-                        token = chunk["message"]["content"]
+                    reasoning_token = None
+                    if "message" in chunk:
+                        msg = chunk["message"]
+                        if "content" in msg:
+                            token = msg["content"]
+                        if "thinking" in msg:
+                            reasoning_token = msg["thinking"]
+                        if "tool_calls" in msg:
+                            tool_calls.extend(msg["tool_calls"])
 
                     if token:
                         text_accumulate += token
-                        if verbose:
+                        if verbose and self.ec is not None:
                             self.ec.send_message(
                                 {
                                     "type": "llm_info",
@@ -570,9 +689,18 @@ class LLM:
                                 }
                             )
                             print(token.replace("\n", "\n    "), end="", flush=True)
-
-                    if "message" in chunk and "tool_calls" in chunk["message"]:
-                        tool_calls.extend(chunk["message"]["tool_calls"])
+                    
+                    if reasoning_token and verbose and self.ec is not None:
+                        self.ec.send_message(
+                            {
+                                "type": "llm_reasoning",
+                                "data": {
+                                    "content": reasoning_token,
+                                },
+                            }
+                        )
+                        print(reasoning_token.replace('\n', '\n    '), end="", flush=True)
+# DOC-END id=llm/query_messages_with_tools/ollama-stream-process#1
 
                 if self.format == "openai":
                     line_str = line_str[len("data: ") :]
@@ -603,6 +731,8 @@ class LLM:
                             token = delta["content"]
                         if "reasoning" in delta:
                             reasoning_token = delta["reasoning"]
+                        if "reasoning_content" in delta:
+                            reasoning_token = delta["reasoning_content"]
                         if "tool_calls" in delta:
                             tool_calls.extend(delta["tool_calls"])
                             # print(chunk)
@@ -825,9 +955,19 @@ class LLM:
             "model": self.model_name,
             "messages": messages,
             "stream": False,
+            "max_tokens": self.max_tokens,
         }
-        if self.reasoning_enabled:
-            payload["reasoning"] = {"enabled": True}
+        # 根据不同format适配思考开关参数
+        if self.format == "openai":
+            payload["reasoning"] = {"enabled": self.reasoning_enabled}
+        elif self.format == "ollama":
+            payload["think"] = self.reasoning_enabled
+        # DOC-BEGIN id=llm/volc_doubao_disable_reasoning#3 type=behavior v=1
+        # summary: 火山引擎豆包API专属逻辑：多模态场景下关闭思考模式
+        # intent: 同id=llm/volc_doubao_disable_reasoning#1，覆盖多模态请求场景
+        if not self.reasoning_enabled and 'ark.cn-beijing.volces.com' in self.llm_url:
+            payload["thinking"] = {"type": "disabled"}
+        # DOC-END id=llm/volc_doubao_disable_reasoning#3
 
         try:
             response = requests.post(

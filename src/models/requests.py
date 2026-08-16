@@ -77,6 +77,7 @@ class LLMRequestData(BaseModel):
     question: str
     api_key: str
     llm_url: Optional[str] = "https://api.deepseek.com/v1/chat/completions"
+    format: str = "openai"
     task_id: Optional[str] = "1"
     system_prompt_mode: Optional[str] = "default"
     enable_fc: Optional[bool] = False
@@ -113,6 +114,9 @@ class ArticleGenerateBlogReq(BaseModel):
     refine_model_name: Optional[str] = None
     refine_api_key: Optional[str] = None
     refine_llm_url: Optional[str] = None
+    # 推理模式控制
+    reasoning_enabled: Optional[bool] = False  # 主LLM（博客生成+图片理解）是否启用深度推理
+    refine_reasoning_enabled: Optional[bool] = False  # 后处理LLM是否启用深度推理
 # DOC-END id=models/requests/article-generate-blog-req#2
 
 

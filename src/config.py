@@ -9,6 +9,8 @@ ARTICLES_ROOT = DATA_DIR / "articles"
 PLAYBOOK_ROOT = DATA_DIR / "playbook"
 TERMINALS_ROOT = DATA_DIR / "terminals"
 RECORDINGS_ROOT = DATA_DIR / "recordings"
+TASK_ROOT = DATA_DIR / "tasks"
+WORD_MEMORY_ROOT = DATA_DIR / "word_memory"
 PLAYBOOK_ACTIONS_NEED_ROOT = {
     "playbook_list",
     "playbook_get",

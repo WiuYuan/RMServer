@@ -10,8 +10,7 @@ import feedparser
 import aiohttp
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from src.config import DATA_DIR
-from src.handlers.llm_handlers import handle_llm_query
-from src.models.requests import LLMRequestData
+from src.services.llm import LLM
 import logging
 
 logger = logging.getLogger(__name__)
@@ -24,18 +23,21 @@ RSS_SOURCES = [
     ["Tech", "TechCrunch", "https://techcrunch.com/feed/"],
     ["Tech", "The Verge", "https://www.theverge.com/rss/index.xml"],
     ["Tech", "Wired", "https://www.wired.com/feed/rss"],
-    ["Finance", "Bloomberg Markets", "https://www.bloomberg.com/feed/markets.rss"],
-    ["Finance", "Reuters Business", "https://www.reuters.com/business/?rss=true"],
-    ["Global", "BBC World News", "https://feeds.bbci.co.uk/news/world/rss.xml"],
-    ["Global", "CNN Top Stories", "http://rss.cnn.com/rss/cnn_topstories.rss"],
-    ["Global", "AP Top News", "https://apnews.com/rss/topnews"],
     ["Tech", "Ars Technica", "https://arstechnica.com/feed/"],
-    ["Finance", "Financial Times", "https://www.ft.com/rss/home"]
+    ["Tech", "Hacker News", "https://news.ycombinator.com/rss"],
+    ["Tech", "Engadget", "https://www.engadget.com/rss.xml"],
+    ["Finance", "Yahoo Finance", "https://finance.yahoo.com/news/rssindex"],
+    ["Finance", "MarketWatch Top Stories", "http://feeds.marketwatch.com/marketwatch/topstories/"],
+    ["Global", "BBC World News", "https://feeds.bbci.co.uk/news/world/rss.xml"],
+    ["Global", "NYT World", "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"],
+    ["Global", "The Guardian World", "https://www.theguardian.com/world/rss"],
+    ["Global", "NPR News", "https://feeds.npr.org/1001/rss.xml"],
 ]
 NEWS_STORAGE_PATH = f"{DATA_DIR}/news"
 DATA_PATH = f"{NEWS_STORAGE_PATH}"  # 新：HTML存储根目录（每日期文件夹下按source分目录存放html）
 AUTO_FETCH_INTERVAL = 15  # 自动拉取间隔，单位分钟
 DATA_EXPIRE_DAYS = 10  # 数据保留天数
+HUMAN_PREFERENCE_PATH = f"{NEWS_STORAGE_PATH}/human_preference.json"  # 独立人类偏好存储，不受过期删除影响
 # DOC-END id=news/config#1
 
 # 全局状态
@@ -46,6 +48,12 @@ _fetch_running = False
 # HTML下载队列：每项形如 {"id": ..., "link": ..., "source": ..., "date_str": ...}
 _download_queue = []
 _download_running = False  # 防止多个下载worker同时运行
+
+# LLM打分进程全局状态
+_scoring_running = False
+_total_to_score = 0
+_scored_count = 0
+_cancel_scoring_flag = False
 
 # 初始化存储目录
 os.makedirs(NEWS_STORAGE_PATH, exist_ok=True)
@@ -58,8 +66,8 @@ logger.info(f"[News] Loaded initial auto fetch status from local config: {auto_f
 # DOC-BEGIN id=news/utils/clean_expired#1 type=func v=1
 # summary: 清理超过DATA_EXPIRE_DAYS的旧新闻数据，直接删除过期日期目录
 # intent: 自动执行，不需要人工干预；直接删除目录比逐条删除条目效率高，符合只存10天的需求
-def clean_expired_data():
-    expire_date = (datetime.now() - timedelta(days=DATA_EXPIRE_DAYS)).strftime("%Y%m%d")
+def clean_expired_data(days: int = DATA_EXPIRE_DAYS) -> int:
+    expire_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
     removed_count = 0
     for date_dir in os.listdir(NEWS_STORAGE_PATH):
         if date_dir.isdigit() and date_dir < expire_date and os.path.isdir(f"{NEWS_STORAGE_PATH}/{date_dir}"):
@@ -67,6 +75,61 @@ def clean_expired_data():
             shutil.rmtree(f"{NEWS_STORAGE_PATH}/{date_dir}")
             removed_count += 1
     logger.info(f"[News] Cleaned expired news data before {expire_date}, removed {removed_count} expired date directories")
+    return removed_count
+# DOC-END id=news/utils/clean_expired#1
+
+# DOC-BEGIN id=news/utils/human-preference#1 type=func v=1
+# summary: 加载独立存储的人类偏好数据，返回格式为{score: [list of samples]}，每个分数对应最多3个样本
+# intent: 独立文件存储不受过期数据清理影响，自动处理文件不存在/格式错误的情况，返回默认空结构
+def load_human_preference() -> dict:
+    default = {str(s): [] for s in range(1, 11)}
+    if not os.path.exists(HUMAN_PREFERENCE_PATH):
+        return default
+    try:
+        with open(HUMAN_PREFERENCE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            # 合并默认结构，避免缺失分数槽
+            for s in default:
+                if s not in data:
+                    data[s] = []
+                # 保证每个槽最多3个样本
+                if len(data[s]) > 3:
+                    data[s] = data[s][-3:]
+            return data
+    except:
+        return default
+
+# DOC-BEGIN id=news/utils/human-preference-save#1 type=func v=1
+# summary: 保存人类偏好数据到独立文件
+# intent: 每次修改后立即持久化，避免数据丢失
+def save_human_preference(data: dict):
+    with open(HUMAN_PREFERENCE_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+# DOC-END id=news/utils/human-preference-save#1
+# DOC-END id=news/utils/human-preference#1
+
+# DOC-BEGIN id=news/delete_old#1 type=func v=1
+# summary: 手动删除超过指定天数的旧新闻，输入days正整数，返回删除的目录数量
+# intent: 前端手动触发，动态指定删除天数，不需要修改配置；删除后自动刷新列表
+# DOC-BEGIN id=news/delete_old#1 type=func v=2
+# summary: 手动删除超过指定天数的旧新闻，输入days>=0，0代表删除所有新闻，返回删除的目录数量
+# intent: 前端手动触发，支持清空所有新闻需求；删除后自动刷新列表
+def handle_news_delete_old(days: int = 3):
+    if days < 0:
+        return {"ok": False, "error": "Days must be >= 0 (0 = delete all news)"}
+    # 0天代表删除所有新闻
+    if days == 0:
+        expire_date = (datetime.now() + timedelta(days=1)).strftime("%Y%m%d")
+        removed_count = 0
+        for date_dir in os.listdir(NEWS_STORAGE_PATH):
+            if date_dir.isdigit() and date_dir < expire_date and os.path.isdir(f"{NEWS_STORAGE_PATH}/{date_dir}"):
+                shutil.rmtree(f"{NEWS_STORAGE_PATH}/{date_dir}")
+                removed_count += 1
+        logger.info(f"[News] Deleted all news data, removed {removed_count} date directories")
+        return {"ok": True, "removed_count": removed_count}
+    removed = clean_expired_data(days)
+    return {"ok": True, "removed_count": removed}
+# DOC-END id=news/delete_old#1
 # DOC-END id=news/utils/clean_expired#1
 
 # DOC-BEGIN id=news/fetch_rss#1 type=func v=1
@@ -83,10 +146,16 @@ async def fetch_all_rss() -> list:
             with open(raw_file, "r", encoding="utf-8") as fp:
                 for item in json.load(fp):
                     existed_ids.add(item["id"])
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3)) as session:
+    # DOC-BEGIN id=news/fetch_rss/ua-timeout-adjust#1 type=optimization v=1
+    # summary: RSS拉取请求增加10秒超时+标准浏览器User-Agent头，避免国外源/反爬策略拦截
+    # intent: 解决MarketWatch等RSS源浏览器可访问但代码拉取失败问题；UA与HTML下载逻辑保持一致，降低被识别为爬虫概率
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
         for category, source, url in RSS_SOURCES:
             try:
-                async with session.get(url) as resp:
+                async with session.get(url, headers={
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                }) as resp:
+    # DOC-END id=news/fetch_rss/ua-timeout-adjust#1
                     content = await resp.text()
                     feed = feedparser.parse(content)
                     for entry in feed.entries:
@@ -118,27 +187,35 @@ async def fetch_all_rss() -> list:
 # intent: 以历史人类打分作为few-shot参考，让LLM学习用户偏好；每次只处理无打分条目，避免重复调用
 #   修复：原来直接调用handle_llm_query没有传入模型配置，现在从参数传入
 async def llm_score_entries(date_str: str, model_name: str = None, api_key: str = None, llm_url: str = None) -> tuple:
+    global _scoring_running, _total_to_score, _scored_count, _cancel_scoring_flag
+    # 防止重复启动打分进程
+    if _scoring_running:
+        return 0, 0
     raw_file = f"{NEWS_STORAGE_PATH}/{date_str}/raw.json"
     if not os.path.exists(raw_file): return 0, 0
     with open(raw_file, "r", encoding="utf-8") as f:
         entries = json.load(f)
-    # 收集历史人类打分作为参考
+    
+    # 初始化打分状态
+    _scoring_running = True
+    _cancel_scoring_flag = False
+    _scored_count = 0
+    
+    # 读取独立存储的人类偏好作为参考，每个分数最多3个样本，总样本最多30个
+    pref = load_human_preference()
     human_examples = []
-    for date_dir in sorted(os.listdir(NEWS_STORAGE_PATH), reverse=True):
-        if not date_dir.isdigit(): continue
-        rf = f"{NEWS_STORAGE_PATH}/{date_dir}/raw.json"
-        if not os.path.exists(rf): continue
-        with open(rf, "r", encoding="utf-8") as ff:
-            for item in json.load(ff):
-                if item.get("human_score") is not None and item.get("llm_score") is not None:
-                    human_examples.append({"title": item["title"], "summary": item.get("summary",""), "human_score": item["human_score"]})
+    # 按分数从高到低排序示例，优先展示高分偏好
+    for score in sorted(pref.keys(), key=lambda x: int(x), reverse=True):
+        human_examples.extend(pref[score])
     examples_text = ""
-    if human_examples[-20:]:
-        examples_text = "\n\n以下是用户历史打分参考，请学习其偏好：\n" + json.dumps(human_examples[-20:], ensure_ascii=False)
+    if human_examples:
+        examples_text = "\n\n以下是用户历史打分参考，请学习其偏好：\n" + json.dumps(human_examples, ensure_ascii=False)
     
     # 收集需要评分的条目
     entries_to_score = [entry for entry in entries if entry.get("llm_score") is None]
+    _total_to_score = len(entries_to_score)
     if not entries_to_score:
+        _scoring_running = False
         return 0, 0
     
     # DOC-BEGIN id=news/llm_score_batch#1 type=logic v=1
@@ -162,14 +239,18 @@ async def llm_score_entries(date_str: str, model_name: str = None, api_key: str 
         prompt = "\n".join(prompt_lines)
         
         try:
-            resp = await handle_llm_query(LLMRequestData(
-                prompt=prompt, 
-                stream=False,
-                model_name=model_name,
+                # DOC-BEGIN id=news/llm_score/direct-llm-call#1 type=logic v=1
+            # summary: 直接调用LLM类执行打分请求，输入prompt文本、模型配置，返回LLM输出字符串
+            # intent: 绕过handle_llm_query适配层避免字段不匹配问题；用asyncio.to_thread执行同步query方法防止阻塞FastAPI事件循环；verbose设为false避免打印冗余日志
+            llm = LLM(
                 api_key=api_key,
-                llm_url=llm_url
-            ))
-            content = resp["content"].strip()
+                llm_url=llm_url,
+                model_name=model_name,
+                format="openai"
+            )
+            content = await asyncio.to_thread(llm.query, prompt, verbose=False)
+            content = content.strip()
+            # DOC-END id=news/llm_score/direct-llm-call#1
             # 尝试解析逗号分隔的分数
             # 移除可能的方括号或其他字符
             content = content.strip('[]')
@@ -187,6 +268,11 @@ async def llm_score_entries(date_str: str, model_name: str = None, api_key: str 
             # 确保分数数量与批次匹配，如果不足，用None填充
             while len(scores) < len(batch):
                 scores.append(None)
+            # 检查取消标志
+            if _cancel_scoring_flag:
+                logger.info(f"[News] Scoring canceled by user, processed {scored} items, remaining {_total_to_score - scored} items skipped")
+                break
+            
             # 分配分数
             for j, entry in enumerate(batch):
                 if scores[j] is not None:
@@ -195,6 +281,10 @@ async def llm_score_entries(date_str: str, model_name: str = None, api_key: str 
                     changed = True
                 else:
                     failed += 1
+            
+            # 更新全局计数 + 输出单批次完成日志
+            _scored_count = scored
+            logger.info(f"[News] Batch scoring completed: {len(batch)} items processed, total progress: {scored}/{_total_to_score} ({round(scored/_total_to_score*100, 1)}%)")
         except Exception as e:
             logger.warning(f"[News] Failed to score batch starting at index {i}: {e}")
             failed += len(batch)
@@ -205,6 +295,13 @@ async def llm_score_entries(date_str: str, model_name: str = None, api_key: str 
         with open(raw_file, "w", encoding="utf-8") as f:
             json.dump(entries, f, ensure_ascii=False, indent=2)
     
+    # 重置打分状态
+    _scoring_running = False
+    _total_to_score = 0
+    _scored_count = 0
+    _cancel_scoring_flag = False
+    
+    logger.info(f"[News] LLM scoring completed: scored={scored}, failed={failed}")
     return scored, failed
 # DOC-END id=news/llm_score#2
 # DOC-END id=news/llm_aggregate#1
@@ -256,6 +353,7 @@ def save_raw_for_date(date_str: str, raw_entries: list) -> int:
             item.setdefault("llm_score", None)
             item.setdefault("human_score", None)
             item.setdefault("html_downloaded", False)
+            item.setdefault("download_failed", False)
             item.setdefault("read", False)
             item.setdefault("read_time", None)
             new_items.append(item)
@@ -280,7 +378,7 @@ def build_download_queue():
             for entry in json.load(f):
                 src_dir = f"{DATA_PATH}/{date_dir}/{entry['source']}"
                 html_path = f"{src_dir}/{entry['id']}.html"
-                if not os.path.exists(html_path):
+                if not os.path.exists(html_path) and not entry.get("download_failed", False):
                     _download_queue.append({
                         "id": entry["id"],
                         "link": entry["link"],
@@ -327,8 +425,30 @@ async def _download_worker():
                             logger.info(f"[News] Downloaded HTML: {item['source']}/{item['id']}.html ({len(html)} bytes)")
                         else:
                             logger.warning(f"[News] Download failed HTTP {resp.status}: {item['link']}")
+                            # 标记为下载失败，不再重试
+                            raw_file = f"{DATA_PATH}/{item['date_str']}/raw.json"
+                            if os.path.exists(raw_file):
+                                with open(raw_file, "r", encoding="utf-8") as rf:
+                                    all_entries = json.load(rf)
+                                for e in all_entries:
+                                    if e["id"] == item["id"]:
+                                        e["download_failed"] = True
+                                        break
+                                with open(raw_file, "w", encoding="utf-8") as wf:
+                                    json.dump(all_entries, wf, ensure_ascii=False, indent=2)
             except Exception as e:
                 logger.warning(f"[News] Download error: {item['link']}, error: {e}")
+                # 标记为下载失败，不再重试
+                raw_file = f"{DATA_PATH}/{item['date_str']}/raw.json"
+                if os.path.exists(raw_file):
+                    with open(raw_file, "r", encoding="utf-8") as rf:
+                        all_entries = json.load(rf)
+                    for e in all_entries:
+                        if e["id"] == item["id"]:
+                            e["download_failed"] = True
+                            break
+                    with open(raw_file, "w", encoding="utf-8") as wf:
+                        json.dump(all_entries, wf, ensure_ascii=False, indent=2)
             if _download_queue:
                 await asyncio.sleep(5)
     finally:
@@ -368,24 +488,47 @@ def handle_news_score(date_str: str, entry_id: str, human_score: int):
     with open(raw_file, "r", encoding="utf-8") as f:
         entries = json.load(f)
     found = False
+    target_entry = None
+    old_score = None
     for entry in entries:
         if entry["id"] == entry_id:
+            old_score = entry.get("human_score")
             entry["human_score"] = human_score
             entry["read"] = True
             entry["read_time"] = datetime.now().isoformat()
+            target_entry = entry
             found = True
             break
     if not found:
         return {"ok": False, "error": "Entry not found"}
     with open(raw_file, "w", encoding="utf-8") as f:
         json.dump(entries, f, ensure_ascii=False, indent=2)
+    
+    # 更新人类偏好存储
+    pref = load_human_preference()
+    score_key = str(human_score)
+    sample = {
+        "title": target_entry["title"],
+        "summary": target_entry.get("summary", ""),
+        "human_score": human_score
+    }
+    # 如果之前有旧分数，先从旧槽移除该样本（如果存在）
+    if old_score is not None and str(old_score) in pref:
+        old_key = str(old_score)
+        pref[old_key] = [s for s in pref[old_key] if s.get("title") != target_entry["title"]]
+    # 加入新槽，保持最多3个，满了踢最老的
+    pref[score_key].append(sample)
+    if len(pref[score_key]) > 3:
+        pref[score_key] = pref[score_key][-3:]
+    save_human_preference(pref)
+    
     return {"ok": True}
 # DOC-END id=news/human_score#2
 
-# DOC-BEGIN id=news/serve_html#1 type=func v=1
-# summary: 根据date_str和entry_id返回本地HTML文件内容，文件不存在时返回错误提示
-# intent: 前端用iframe展示HTML，不直接暴露文件路径；按date_str/source/id.html定位文件
-def handle_news_html(date_str: str, entry_id: str):
+# DOC-BEGIN id=news/serve_html#2 type=func v=2
+# summary: 根据date_str和entry_id返回本地HTML文件内容，文件不存在时将该任务插入下载队列最前面优先下载，返回错误提示
+# intent: 用户点击未下载新闻时触发优先下载，自动启动下载worker，确保第一时间下载；避免重复添加到队列
+async def handle_news_html(date_str: str, entry_id: str):
     for date_dir in [date_str] + sorted(os.listdir(NEWS_STORAGE_PATH), reverse=True):
         if not date_dir.isdigit(): continue
         raw_file = f"{NEWS_STORAGE_PATH}/{date_dir}/raw.json"
@@ -399,10 +542,24 @@ def handle_news_html(date_str: str, entry_id: str):
                     with open(html_path, "r", encoding="utf-8") as hf:
                         return {"ok": True, "html": hf.read()}
                 else:
+                    if entry.get("download_failed", False):
+                        return {"ok": False, "error": "download_failed", "link": entry["link"]}
+                    # 检查是否已在队列中，避免重复添加
+                    exist_in_queue = any(item["id"] == entry_id for item in _download_queue)
+                    if not exist_in_queue:
+                        # 插入队列最前面，优先下载
+                        _download_queue.insert(0, {
+                            "id": entry_id,
+                            "link": entry["link"],
+                            "source": entry["source"],
+                            "date_str": date_dir
+                        })
+                        logger.info(f"[News] Added priority download task for entry {entry_id}")
+                    # 启动下载worker如果未运行
+                    await launch_download_worker()
                     return {"ok": False, "error": "HTML not downloaded yet"}
     return {"ok": False, "error": "Entry not found"}
-# DOC-END id=news/serve_html#1
-# DOC-END id=news/launch_worker#1
+# DOC-END id=news/serve_html#2
 
 # DOC-BEGIN id=news/auto_toggle#1 type=func v=1
 # summary: 开关自动拉取功能，输入enable布尔值，返回当前状态；状态持久化到本地文件，重启不丢失
@@ -479,3 +636,26 @@ def handle_news_categories():
     logger.info(f"[News] Available categories: {categories}")
     return {"ok": True, "categories": categories}
 # DOC-END id=news/categories#1
+
+# DOC-BEGIN id=news/scoring_status#1 type=func v=1
+# summary: 查询当前LLM打分进程状态，返回是否运行、总数、已完成数
+# intent: 前端轮询获取进度，刷新页面后可恢复进度显示
+def handle_news_get_scoring_status():
+    global _scoring_running, _total_to_score, _scored_count
+    return {
+        "ok": True,
+        "running": _scoring_running,
+        "total": _total_to_score,
+        "scored": _scored_count
+    }
+# DOC-END id=news/scoring_status#1
+
+# DOC-BEGIN id=news/cancel_scoring#1 type=func v=1
+# summary: 取消正在运行的LLM打分进程，设置取消标志
+# intent: 前端点击取消按钮触发，下一批次处理前自动终止
+def handle_news_cancel_scoring():
+    global _cancel_scoring_flag
+    _cancel_scoring_flag = True
+    logger.info("[News] Scoring cancel requested by user")
+    return {"ok": True}
+# DOC-END id=news/cancel_scoring#1

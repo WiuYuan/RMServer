@@ -34,6 +34,10 @@ from src.models.requests import (
     ArticleGenerateBlogReq,
     ArticleGenerateTTSReq, ArticleDeleteTTSReq,
 )
+from src.models.word_requests import (
+    WordGetNewReq, WordGetReviewReq, WordGetMasteredReq, WordUpdateProgressReq,
+    WordGenerateMetaReq, WordMetaTaskStatusReq, WordStopMetaTaskReq, WordGetIgnoredReq
+)
 from src.config import (
     SECRET_FILE, DATA_DIR, with_default_playbook_root,
 )
@@ -65,9 +69,16 @@ from src.handlers.think_relay_handlers import (
 )
 from src.handlers.news_handlers import (
     handle_news_manual_fetch, handle_news_auto_toggle, handle_news_list, handle_news_auto_status,
-    handle_news_llm_score, handle_news_score, handle_news_html, handle_news_categories
+    handle_news_llm_score, handle_news_score, handle_news_html, handle_news_categories, handle_news_delete_old,
+    handle_news_get_scoring_status, handle_news_cancel_scoring
 )
 from src.models.requests import NewsAutoToggleReq, NewsListReq
+from src.handlers.word_handlers import (
+    handle_word_get_new, handle_word_get_review,
+    handle_word_get_mastered, handle_word_update_progress, handle_word_get_ignored,
+    handle_word_generate_meta, handle_word_meta_task_status, handle_word_stop_meta_task,
+)
+from src.services.word_memory import ensure_word_list
 
 logging.basicConfig(
     level=logging.INFO,
@@ -528,64 +539,122 @@ async def gateway_endpoint(req: ActionRequest):
                 req.data.get("human_score"),
             )
         if req.action == "news_html":
-            return handle_news_html(
+            return await handle_news_html(
                 req.data.get("date_str"),
                 req.data.get("entry_id"),
             )
+        if req.action == "news_delete_old":
+            return handle_news_delete_old(req.data.get("days", 3))
         if req.action == "news_categories":
             return handle_news_categories()
+        if req.action == "news_get_scoring_status":
+            return handle_news_get_scoring_status()
+        if req.action == "news_cancel_scoring":
+            return handle_news_cancel_scoring()
 
+        # DOC-BEGIN id=server/book-module-lazy-import#1 type=design v=1
+        # summary: 将 Book Reading Module 的导入语句移到 req.action.startswith("book_") 条件块内，
+        #   实现延迟导入，避免非 book action 时触发 fitz 导入错误。
+        # intent: 原代码在 try 块顶部导入 book_handlers，导致任何 action 都会执行导入，
+        #   当 fitz 依赖的环境问题（如静态目录缺失）时，即使 word_get_new 等无关 action 也会失败。
+        #   通过延迟导入，只有 book 相关 action 才尝试导入，隔离错误影响。
         # === Book Reading Module ===
-        from src.models.book_requests import (
-            BookListReq, BookGetReq, BookDeleteReq,
-            BookGetPagesReq, BookGenerateAnnotationReq, BookGetAnnotationReq,
-        )
-        from src.handlers.book_handlers import (
-            handle_book_scan, handle_book_list, handle_book_get, handle_book_delete,
-            handle_book_get_pages, handle_book_generate_annotation,
-            handle_book_get_annotation,
-        )
-
-        if req.action == "book_scan":
-            return handle_book_scan()
-
-        if req.action == "book_list":
-            return handle_book_list()
-
-        if req.action == "book_get":
-            return handle_book_get(
-                TypeAdapter(BookGetReq).validate_python(req.data).book_id
+        if req.action.startswith("book_"):
+            from src.models.book_requests import (
+                BookListReq, BookGetReq, BookDeleteReq,
+                BookGetPagesReq, BookGenerateAnnotationReq, BookGetAnnotationReq,
+            )
+            from src.handlers.book_handlers import (
+                handle_book_scan, handle_book_list, handle_book_get, handle_book_delete,
+                handle_book_get_pages, handle_book_generate_annotation,
+                handle_book_get_annotation,
             )
 
-        if req.action == "book_delete":
-            return handle_book_delete(
-                TypeAdapter(BookDeleteReq).validate_python(req.data).book_id
+            if req.action == "book_scan":
+                return handle_book_scan()
+
+            if req.action == "book_list":
+                return handle_book_list()
+
+            if req.action == "book_get":
+                return handle_book_get(
+                    TypeAdapter(BookGetReq).validate_python(req.data).book_id
+                )
+
+            if req.action == "book_delete":
+                return handle_book_delete(
+                    TypeAdapter(BookDeleteReq).validate_python(req.data).book_id
+                )
+
+            if req.action == "book_get_pages":
+                data = TypeAdapter(BookGetPagesReq).validate_python(req.data)
+                return handle_book_get_pages(data.book_id, data.pages)
+
+            if req.action == "book_generate_annotation":
+                data = TypeAdapter(BookGenerateAnnotationReq).validate_python(req.data)
+                return await handle_book_generate_annotation(
+                    book_id=data.book_id,
+                    pages=data.pages,
+                    model_name=data.model_name,
+                    api_key=data.api_key,
+                    llm_url=data.lm_url,
+                )
+
+            if req.action == "book_get_annotation":
+                data = TypeAdapter(BookGetAnnotationReq).validate_python(req.data)
+                return handle_book_get_annotation(data.book_id)
+        # DOC-END id=server/book-module-lazy-import#1
+
+        # === Word Memorization Module ===
+        if req.action == "word_get_new":
+            return await handle_word_get_new(
+                TypeAdapter(WordGetNewReq).validate_python(req.data),
+                user_id=req.data.get("user_id", "default"),
             )
-
-        if req.action == "book_get_pages":
-            data = TypeAdapter(BookGetPagesReq).validate_python(req.data)
-            return handle_book_get_pages(data.book_id, data.pages)
-
-        if req.action == "book_generate_annotation":
-            data = TypeAdapter(BookGenerateAnnotationReq).validate_python(req.data)
-            return await handle_book_generate_annotation(
-                book_id=data.book_id,
-                pages=data.pages,
-                model_name=data.model_name,
-                api_key=data.api_key,
-                llm_url=data.llm_url,
+        if req.action == "word_get_review":
+            return await handle_word_get_review(
+                TypeAdapter(WordGetReviewReq).validate_python(req.data),
+                user_id=req.data.get("user_id", "default"),
             )
-
-        if req.action == "book_get_annotation":
-            data = TypeAdapter(BookGetAnnotationReq).validate_python(req.data)
-            return handle_book_get_annotation(data.book_id)
-
+        if req.action == "word_get_mastered":
+            return await handle_word_get_mastered(
+                TypeAdapter(WordGetMasteredReq).validate_python(req.data),
+                user_id=req.data.get("user_id", "default"),
+            )
+        if req.action == "word_get_ignored":
+            return await handle_word_get_ignored(
+                TypeAdapter(WordGetIgnoredReq).validate_python(req.data),
+                user_id=req.data.get("user_id", "default"),
+            )
+        if req.action == "word_update_progress":
+            return await handle_word_update_progress(
+                TypeAdapter(WordUpdateProgressReq).validate_python(req.data),
+                user_id=req.data.get("user_id", "default"),
+            )
+        if req.action == "word_generate_meta":
+            return await handle_word_generate_meta(
+                TypeAdapter(WordGenerateMetaReq).validate_python(req.data),
+                user_id=req.data.get("user_id", "default"),
+            )
+        if req.action == "word_meta_task_status":
+            task_id = req.data.get("task_id")
+            if not task_id:
+                return {"ok": False, "error": "task_id required"}
+            return await handle_word_meta_task_status(task_id)
+        if req.action == "word_stop_meta_task":
+            task_id = req.data.get("task_id")
+            if not task_id:
+                return {"ok": False, "error": "task_id required"}
+            return await handle_word_stop_meta_task(task_id)
 
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
     raise HTTPException(status_code=400, detail=f"Unknown action: {req.action}")
+
+# ── 启动时预加载词表，避免首次请求延迟 ──
+ensure_word_list("en", 50000)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8888)

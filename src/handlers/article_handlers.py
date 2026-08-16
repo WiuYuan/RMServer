@@ -985,12 +985,18 @@ async def handle_article_generate_blog(data: ArticleGenerateBlogReq):
                 for img in all_images
             ]
 
+            # DOC-BEGIN id=handlers/bloggen/main-config-reasoning#1 type=behavior v=1
+            # summary: 创建主LLM的BlogGenConfig时，传入data.reasoning_enabled；
+            #   该参数控制博客生成+图片理解的多模态LLM是否启用深度推理
+            # intent: 前端通过ArticleGenerateBlogReq.reasoning_enabled传入，这里透传到BlogGenConfig
             config = BlogGenConfig(
                 model_name=data.model_name,
                 api_key=data.api_key,
                 llm_url=data.llm_url,
                 style=data.style or "math",
+                reasoning_enabled=data.reasoning_enabled or False,
             )
+            # DOC-END id=handlers/bloggen/main-config-reasoning#1
 
             task_dir = f"{DATA_DIR}/tasks/{data.task_id}"
             tc = Tool_Calls(LOG_DIR=task_dir, MAX_CHAR=800000, mode="Summary")
@@ -1167,12 +1173,18 @@ async def handle_article_generate_blog(data: ArticleGenerateBlogReq):
             #   可以在不改变图片引用的前提下提升文章质量和概念解释深度。
             if data.refine_model_name and data.refine_api_key:
                 logger.info(f"[BlogGen][{data.article_id}] Starting blog refinement with post-processing LLM...")
+                # DOC-BEGIN id=handlers/bloggen/refine-config-reasoning#1 type=behavior v=1
+                # summary: 创建后处理LLM的BlogGenConfig时，传入data.refine_reasoning_enabled；
+                #   后处理LLM是单模态，用于精修和概念补充，独立控制推理开关
+                # intent: 前端通过ArticleGenerateBlogReq.refine_reasoning_enabled传入，透传到BlogGenConfig
                 refine_config = BlogGenConfig(
                     model_name=data.refine_model_name,
                     api_key=data.refine_api_key,
                     llm_url=data.refine_llm_url,
                     style=data.style or "math",
+                    reasoning_enabled=data.refine_reasoning_enabled or False,
                 )
+                # DOC-END id=handlers/bloggen/refine-config-reasoning#1
                 
                 # 提取blog中实际引用的图片编号
                 used_figs = set()
@@ -1190,12 +1202,21 @@ async def handle_article_generate_blog(data: ArticleGenerateBlogReq):
 {result["blog_markdown"]}
 
 要求：
-1. 保持博客文章的Markdown结构，包括标题、子标题、图片引用（如[[FIG:1]]）等。
-2. 改进文章的语言表达，使其更加流畅、专业。
-3. 对文章中的关键概念进行补充和扩写，提供更详细的解释和例子。
-4. 确保所有图片引用（[[FIG:x]]）保持不变，不要添加或删除图片引用。
-5. 如果原始文章中有重要的公式或数据，请确保在博客中得到准确的呈现。
-6. 输出精修后的完整博客文章（Markdown格式），不要输出任何其他解释或标记。
+- 保持博客文章的Markdown结构，包括标题、子标题、图片引用（如[[FIG:1]]）等。
+- 改进文章的语言表达，使其更加流畅、专业。
+- 对文章中的关键概念进行补充和扩写，提供更详细的解释和例子。
+- 确保所有图片引用（[[FIG:x]]）保持不变，不要添加或删除图片引用。
+- 如果原始文章中有重要的公式或数据，请确保在博客中得到准确的呈现。
+- 前三个板块需要分别是TL;DR, 研究背景和预备知识, 预备知识需要介绍清楚这篇文章需要用到的知识, 如果需要用公式讲解, 请使用
+- 每一个公式都需要讲解清楚, 需要首先先用最通俗的话讲清楚这一步在干嘛，不要出现任何公式, 再给出公式, 再统一列出所有符号的含义，做成清晰列表, 最后用一句话解释公式在干什么, 这里请不要出现‘通俗解释‘, ‘符号说明’的小标题, 请你用blog合适的语言穿起来
+- 每一个公式都要详细推导清楚
+- 能详细讲就详细讲, blog整体需要很长, 每一个点都细细地讲清楚
+- 输出精修后的完整博客文章（Markdown格式），不要输出任何其他解释或标记。
+- 数学公式用 $...$ 或 $$...$$，不要用 () 或 [], 且$...$前后都加上空格, $$...$$一定要换行, 以下是例子
+ $A_i$ 
+$$
+A_i
+$$
 
 注意：图片引用格式为[[FIG:x]]，x是数字，请确保这些引用在精修后的文章中保持不变 (注意格式必须是[[FIG:x]]而不是FIG:x)。
 """

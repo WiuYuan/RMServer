@@ -8,7 +8,7 @@ from functools import partial
 
 from fastapi.responses import StreamingResponse
 
-from src.config import DATA_DIR
+from src.config import TASK_ROOT
 from src.services.llm import LLM
 from src.services.external_client import ExternalClient
 from src.services.agents import Tool_Calls, stop_if_no_tool_calls
@@ -22,7 +22,7 @@ async def handle_llm_simple_query(data: LLMRequestData):
     result_queue = queue.Queue()
     ec = ExternalClient(out_queue=result_queue)
     try:
-        llm = LLM(api_key=data.api_key, llm_url=data.llm_url, model_name=data.model_name, format="openai", ec=ec, reasoning_enabled=data.reasoning_enabled)
+        llm = LLM(api_key=data.api_key, llm_url=data.llm_url, model_name=data.model_name, format=data.format, ec=ec, reasoning_enabled=data.reasoning_enabled)
         loop = asyncio.get_running_loop()
         loop.run_in_executor(None, llm.query, data.question, True)
     except Exception:
@@ -625,7 +625,7 @@ async def handle_llm_query(data: LLMRequestData):
         return json.dumps({"ok": True, "query": query, "count": len(results), "results": results[:30]}, ensure_ascii=False)
     # DOC-END id=llm_handlers/search_summaries#1
 
-    task_dir=f"{DATA_DIR}/tasks/{data.task_id}"
+    task_dir=f"{TASK_ROOT}/{data.task_id}"
     tc = Tool_Calls(LOG_DIR=task_dir, MAX_CHAR=800000, mode="Summary")
     tc.remove_temporary_context()
 
@@ -977,7 +977,7 @@ async def handle_llm_query(data: LLMRequestData):
         # 基础规则
         base_rules = [
             "1. Answer in the same language.",
-            "2. Use $$ for math (e.g. $$x^2$$).",
+            "2. Use $$ for math (e.g. $$x^2$$) instead of \[\] or \(\). Under no circumstances may \text{} be used with subscripts _{} or superscripts ^{}. For example, \text{any}_k is prohibited.",
             "3. Pinyin -> Chinese.",
             "4. If clarification is needed, ask the user directly without invoking any tools.",
             (
@@ -1193,11 +1193,42 @@ async def handle_llm_query(data: LLMRequestData):
         # intent: 三种模式给用户灵活选择——concise 用于纯对话不编辑代码的场景（节省 token），
         #   code_edit 用于常规单文件编辑，bulk_code_edit 用于批量移动/缩进等进阶编辑。
         #   workspace 模式下协议由上方的 workspace 覆盖逻辑处理，此处只需检查 concise 清空。
-        if data.system_prompt_mode in ["concise", "code_edit", "bulk_code_edit"]:
+        if data.system_prompt_mode in ["concise", "code_edit", "bulk_code_edit", "email", "english_learning"]:
             base_rules.append("5. Be concise.")
         if data.system_prompt_mode in ["concise"]:
             if not is_workspace_bound:
                 code_edit_protocol = ""
+        # DOC-BEGIN id=llm_handlers/system_prompt/email_mode#1 type=behavior v=3
+        # summary: 当system_prompt_mode为email时，清空编辑协议，添加邮件输出专属规则：要求按顺序输出英文标题、英文正文、中文标题、中文正文，中英文部分用固定分隔线拆分、无首尾问候客套语、所有部分分别用```txt```代码块包裹
+        # intent: 满足用户快速生成完整中英对照邮件的需求，规则强制要求无首尾问候、无客套话、包含标题+正文完整内容，避免生成冗余内容，提升输出匹配度；固定分隔线和代码块包裹格式便于前端自动拆分提取内容，避免格式混乱
+        elif data.system_prompt_mode == "email":
+            code_edit_protocol = ""
+            base_rules.extend([
+                "6. 输出内容必须按顺序包含四部分：英文邮件标题、英文邮件正文、中文邮件标题、中文邮件正文，其中英文部分与中文部分用固定分隔线「---中文翻译---」分隔",
+                "7. 严格禁止包含任何邮件开头问候语（如Dear XXX、Hi XXX等）、结尾问候语（如Best regards、Sincerely等）、署名信息",
+                "8. 语气必须简洁直接，禁止使用任何冗余客套表述，例如但不限于\"please feel free to\"、\"Please let me know\"等",
+                "9. 仅输出标题、正文和翻译内容，不要添加任何额外解释、说明性文字",
+                "10. 英文标题、英文正文、中文标题、中文正文四个部分都必须单独用```txt```代码块包裹，代码块内仅包含对应内容，不得包含代码块标记之外的其他内容"
+            ])
+        # DOC-END id=llm_handlers/system_prompt/email_mode#1
+        elif data.system_prompt_mode == "english_learning":
+            code_edit_protocol = ""
+            base_rules = [
+                "你是我的英文表达教练"
+                "我的目标是把我原本用中文思考、记录和表达的内容，逐渐转化为自然、准确的英文。",
+                "接下来，我每次会提供: 我自己尝试写的英文表达，可能有语法错误、不自然表达",
+                "你必须严格按照下面的固定格式回答，不要跳过任何一步，也不要直接和我讨论内容本身",
+                "1. 给出一个尽量保留我原句结构的修改版本",
+                # "2. 最后给出一个更自然的母语版本",
+                "2. 解释其中最值得我记住的 3 个表达, 注意不用管大小写和缩写"
+                "额外规则:"
+                "1. 不要回答我句子中讨论的问题，只分析和改进英文表达。"
+                "2. 不要把任务理解成普通聊天"
+                "3. 由于是内心所想, 有时候会有‘...’的出现, 这种东西代表说我使用中文想的时候, 就是会有这种断断续续的停顿, 使用英文的时候, 你需要解释应该怎么想"
+                "4. 所有交流全部使用英文."
+                "5. 括号内的是我对于一个词的解释, 比如i want to do something(in the platground, use balls to throw it), 我不太清楚这个词是什么, 如何使用英文合适的表达, 所以这么写, 它们只是解释, 这样你的Revised version就是i want to play basketball, 不要加上括号"
+                "我现在开始输出, 你现在开始完成我的要求"
+            ]
         elif data.system_prompt_mode == "bulk_code_edit":
             # Move 和 Tab 协议无论 workspace 模式都追加到 code_edit_protocol 末尾
             # DOC-BEGIN id=llm_handlers/system_prompt/move_protocol#1 type=behavior v=1
@@ -1496,7 +1527,7 @@ Placeholder rules:
         # DOC-END id=llm_handlers/system_prompt/return_concat#1
 
     try:
-        llm = LLM(api_key=data.api_key, llm_url=data.llm_url, model_name=data.model_name, format="openai", ec=ec, reasoning_enabled=data.reasoning_enabled)
+        llm = LLM(api_key=data.api_key, llm_url=data.llm_url, model_name=data.model_name, format=data.format, ec=ec, reasoning_enabled=data.reasoning_enabled)
         loop = asyncio.get_running_loop()
         fn = partial(
             llm.query_with_tools,

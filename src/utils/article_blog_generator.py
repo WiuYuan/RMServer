@@ -44,6 +44,13 @@ class BlogGenConfig(BaseModel):
     language: Literal["zh", "en"] = "zh"
     style: Literal["math", "normal", "rigorous"] = "math"
 
+    # DOC-BEGIN id=blog-generator/config-reasoning#1 type=design v=1
+    # summary: reasoning_enabled 控制主LLM（博客生成+图片理解）是否启用深度推理模式，
+    #   与LLM.__init__的reasoning_enabled参数对应，开启后LLM会调用支持reasoning的模型端点
+    # intent: 对应前端ArticleGenerateBlogReq.reasoning_enabled，透传到LLM构造函数
+    reasoning_enabled: bool = False
+    # DOC-END id=blog-generator/config-reasoning#1
+
     max_article_chars: int = 120000000
     max_leaf_chars: int = 6000000
 # DOC-END id=blog-generator/config#1
@@ -318,6 +325,10 @@ def _extract_fig_placeholders(md: str) -> List[str]:
     return re.findall(r"\[\[FIG:([0-9]+[a-z]?)\]\]", md)
 
 
+# DOC-BEGIN id=blog-generator/new-llm-reasoning#1 type=behavior v=1
+# summary: _new_llm创建LLM实例时，透传BlogGenConfig.reasoning_enabled到LLM构造函数；
+#   该参数控制是否启用深度推理模式，影响多模态博客生成和Figure Index生成的LLM调用
+# intent: 将BlogGenConfig中的reasoning_enabled传递到LLM底层，由LLM决定如何启用推理模式
 def _new_llm(cfg: BlogGenConfig) -> LLM:
     return LLM(
         api_key=cfg.api_key,
@@ -325,7 +336,9 @@ def _new_llm(cfg: BlogGenConfig) -> LLM:
         model_name=cfg.model_name,
         format="openai",
         ec=None,
+        reasoning_enabled=cfg.reasoning_enabled,
     )
+# DOC-END id=blog-generator/new-llm-reasoning#1
 
 
 def _build_full_context(title, text, images, max_chars) -> str:
@@ -407,11 +420,12 @@ def generate_blog_from_article_tree(
 - 对引用的图片, 详细说明其含义（包括子图A/B/C等、横纵坐标、线条含义等）
 - 关于公式图片：如果图片是公式（如数学方程、推导过程），这不是噪音，但也无需用[[FIG:x]]引用。
   请仔细阅读公式图片, 以及文章中存在的任何公式，对于你认为有意义的公式, 请使用$$...$$格式在正文中重写公式，并详细解释每个符号的含义和推导逻辑。
+  你需要把公式推导清楚
 - 使用中文
 - 讲清楚文章的背景、基本概念、结论等关键信息
 - 对于关键术语, 请你详细解释清楚, 读者拥有强数学功底, 用公式可以让读者更好理解
 - 表格结果需要对比清楚并引用
-- 能详细讲就详细讲, blog整体需要长一点
+- 能详细讲就详细讲, blog整体需要很长, 每一个点都细细地讲清楚
 - 合并重复内容，给出有逻辑链条的讲解
 - 无需生成任何图片的详细索引或Figure Index章节，仅保留博客中所有的[[FIG:x]]图片引用即可，后续会单独生成图片索引
 - 数学公式用 $...$ 或 $$...$$，不要用 () 或 [], 且$...$前后都加上空格, $$...$$一定要换行, 以下是例子
